@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <future>
 
+#define THREADS 4
+
 using namespace std;
 
 string fileToString(string file)
@@ -29,16 +31,13 @@ int charLenght(char ch)
     if (test < 128)
     {
         charLenght = 1;
-    }
-    else if (test < 224)
+    } else if (test < 224)
     {
         charLenght = 2;
-    }
-    else if (test < 240)
+    } else if (test < 240)
     {
         charLenght = 3;
-    }
-    else
+    } else
     {
         charLenght = 4;
     }
@@ -62,7 +61,7 @@ pair<string, int> compileBigram(string file, int initPos)
     return pair<string, int>(b, charLen + initPos);
 }
 
-unordered_map<string, int> bigrams(string file)
+unordered_map<string, int> bigrams(string file, int id)
 {
     pair<string, int> p = compileBigram(file, 0);
     string b = p.first;
@@ -88,8 +87,7 @@ unordered_map<string, int> bigrams(string file)
         {
             bigrams.push_back(a);
             map[a] = 1;
-        }
-        else
+        } else
         {
             map[a] = map[a] + 1;
         }
@@ -126,8 +124,7 @@ void trigrams(string file)
         {
             trigrams.push_back(a);
             map[a] = 1;
-        }
-        else
+        } else
         {
             map[a] = map[a] + 1;
         }
@@ -142,8 +139,7 @@ unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordere
         {
             futArr2[p.first] = futArr2[p.first] + futArr1[p.first];
             futArr1[p.first] = 0;
-        }
-        else
+        } else
         {
             futArr2[p.first] = futArr1[p.first];
             futArr1[p.first] = 0;
@@ -152,25 +148,75 @@ unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordere
     return futArr2;
 }
 
-int main()
+vector<future<unordered_map<string, int>>> splitFile(string file, int splits)
 {
+    vector<future<unordered_map<string, int>>> res(0);
+    int adjustment = 0;
+    unsigned long lengthFrac = file.length() / splits;
+    // il resto per aggiustare il numero di caratteri (eventuali caratteri in più finiscono nel primo subFile)
+    unsigned long remainder = file.length() % splits;
+    string subFile = file.substr(0, lengthFrac + 1 + remainder);
+
+    /* se il primo byte di file dopo l'ultimo incluso in subFile
+     * (che è lengthFrac + 1, perché ho chiesto sottostringa da 0 lunga lengthFrac + 1, quindi va da 0 a lengthFrac)
+     * inizia per 10xxxxxx (in UTF-8) allora
+     * è un pezzo di un altro carattere spezzato che inizia in subFile. Riaggiungiamolo in subFile e spostiamo il
+     * "cursore" di uno avanti*/
+    while ((file[lengthFrac + 1 + adjustment + remainder] & 0xC0) == 128)
+    {
+        subFile.push_back(file[lengthFrac + 1 + adjustment + remainder]);
+        adjustment++;
+    }
+    res.push_back(async(launch::async, bigrams, subFile, 0));
+    for (int i = splits - 1; i > 0; i--)
+    {
+        unsigned long pos = file.length() - (i * lengthFrac) - 1 + adjustment;
+        /* ora riscorriamo all'indietro per tornare all'inizio dell'ultimo carattere messo in subFile (che dovrà
+         * essere anche il primo carattere del nuovo subFile perché si sovrappongono di 1 carattere)
+         * */
+        while ((file[pos] & 0xC0) == 128)
+        {
+            pos--;
+        }
+        subFile = file.substr(pos, lengthFrac + 1);
+        adjustment = 0;
+        while ((pos + lengthFrac + 1 + adjustment) < file.length() &&
+        (file[pos + lengthFrac + 1 + adjustment] & 0xC0) == 128)
+        {
+            subFile.push_back(file[pos + lengthFrac + 1 + adjustment]);
+            adjustment++;
+        }
+        res.push_back(async(launch::async, bigrams, subFile, i));
+    }
+    return res;
+}
+
+int main(int argc, char *argv[])
+{
+    int numThreads = THREADS;
+    // si può passare al programma il numero di thread da avviare, default 4
+    if (argc == 2)
+    {
+        try
+        {
+            numThreads = stoi(argv[1]);
+        } catch (invalid_argument)
+        {
+            cerr << "il parametro passato non è un numero valido di threads" << endl;
+        }
+    }
     string fToString;
     fToString = fileToString("example.txt");
-    future<unordered_map<string, int>> fut = async(launch::async, bigrams, fToString.substr(0, fToString.length() / 4));
-    future<unordered_map<string, int>> fut2 = async(launch::async, bigrams, fToString.substr((fToString.length() / 4 - 1), fToString.length() / 4 + 1));
-    future<unordered_map<string, int>> fut3 = async(launch::async, bigrams, fToString.substr((fToString.length() - ((2 * fToString.length()) / 4) - 1), fToString.length() / 4 + 1));
-    future<unordered_map<string, int>> fut4 = async(launch::async, bigrams, fToString.substr((fToString.length() - ((3 * fToString.length()) / 4) - 1), fToString.length() / 4 + 1));
-    unordered_map<string, int> futArr1 = fut.get();
-    unordered_map<string, int> futArr2 = fut2.get();
-    unordered_map<string, int> futArr3 = fut3.get();
-    unordered_map<string, int> futArr4 = fut4.get();
-    unordered_map<string, int> futMap1 = mergeMap(futArr1, futArr2);
-    unordered_map<string, int> futMap2 = mergeMap(futArr3, futArr4);
-    unordered_map<string, int> futMapFin = mergeMap(futMap1, futMap2);
-    for (pair<string, int> p : futMapFin)
+    vector<future<unordered_map<string, int>>> futures = splitFile(fToString, numThreads);
+    unordered_map<string, int> map = futures.at(0).get();
+    for (int i = 1; i < numThreads; i++)
+    {
+        map = mergeMap(map, futures.at(i).get());
+    }
+    for (pair<string, int> p : map)
     {
         cout << p.first << " " << p.second << endl;
     }
     cout << endl;
-    //trigrams(fToString);
+    cout << "eseguito con " << numThreads << " threads." << endl;
 }
