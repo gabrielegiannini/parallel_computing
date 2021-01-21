@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <future>
 #include <filesystem>
+#include <cstring>
 
 namespace fs = std::filesystem;
 
@@ -12,7 +13,7 @@ namespace fs = std::filesystem;
 
 using namespace std;
 
-string fileToString(string file)
+string fileToString(const string & file)
 {
     string s;
     string sTotal;
@@ -50,7 +51,6 @@ int charLenght(char ch)
 pair<string, int> compileBigram(string file, int initPos)
 {
     string b = "";
-    int test = file[initPos];
     int charLen = charLenght(file[initPos]);
     for (int i = initPos; i < charLen + initPos; i++)
     {
@@ -196,43 +196,60 @@ vector<future<unordered_map<string, int>>> splitFile(string file, int splits)
 
 int main(int argc, char *argv[])
 {
-    int numThreads = THREADS;
-    // si può passare al programma il numero di thread da avviare, default 4
+    unsigned int numThreads = THREADS;
+    /* si può passare al programma il numero di thread da avviare, default 4, oopure HW per indicare che deve
+     * usare un n di thread in base all'hardware del pc (numThread = n° di thread della cpu)
+     */
     if (argc == 2)
     {
-        try
+        if (strcmp(argv[1], "HW") == 0 || strcmp(argv[1], "hw") == 0)
         {
-            numThreads = stoi(argv[1]);
-        } catch (invalid_argument)
+            numThreads = thread::hardware_concurrency();
+        } else
         {
-            cerr << "il parametro passato non è un numero valido di threads" << endl;
+            try
+            {
+                numThreads = stoi(argv[1]);
+            } catch (invalid_argument &ex)
+            {
+                cerr << "il parametro passato non è un numero valido di threads" << endl;
+            }
         }
     }
     string fToString;
     fs::create_directory("output");
-    for (const auto &entry: fs::directory_iterator("./analyze"))
+    const fs::path inputP{"analyze"};
+    if (!fs::exists(inputP) || fs::is_empty(inputP))
     {
-        const auto &path = entry.path();
-        if (path.extension() != ".txt")
-        {
-            continue;
-        }
-        fToString = fileToString(path);
-        vector<future<unordered_map<string, int>>> futures = splitFile(fToString, numThreads);
-        unordered_map<string, int> map = futures[0].get();
-        for (int i = 1; i < numThreads; i++)
-        {
-            map = mergeMap(map, futures[i].get());
-        }
-        ofstream outFile;
-        const string outPath = "analysis-" + path.stem().string() + ".csv";
-        outFile.open(fs::path("output/" + outPath));
-        outFile << "Bigram,Occurrencies" << endl;
-        for (pair<string, int> p : map)
-        {
-            outFile << "\"" << p.first << "\"," << p.second << endl;
-        }
+        cout << "Put all the .txt files to be analyzed in an 'analyze' directory:" << endl;
+        cout << "nothing to analyze!" << endl;
     }
-    cout << endl;
-    cout << "eseguito con " << numThreads << " threads." << endl;
+    else
+    {
+
+        for (const auto &entry: fs::directory_iterator("./analyze"))
+        {
+            const auto &path = entry.path();
+            if (path.extension() != ".txt")
+            {
+                continue;
+            }
+            fToString = fileToString(path);
+            vector<future<unordered_map<string, int>>> futures = splitFile(fToString, numThreads);
+            unordered_map<string, int> map = futures[0].get();
+            for (int i = 1; i < numThreads; i++)
+            {
+                map = mergeMap(map, futures[i].get());
+            }
+            ofstream outFile;
+            const string outPath = "analysis-" + path.stem().string() + ".csv";
+            outFile.open(fs::path("output/" + outPath));
+            outFile << "Bigram\tOccurrencies" << endl;
+            for (pair<string, int> p : map)
+            {
+                outFile << p.first << "\t" << p.second << endl;
+            }
+        }
+        cout << "run with " << numThreads << " threads." << endl;
+    }
 }
