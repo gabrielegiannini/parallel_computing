@@ -4,6 +4,9 @@
 #include <vector>
 #include <unordered_map>
 #include <future>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 #define THREADS 4
 
@@ -181,7 +184,7 @@ vector<future<unordered_map<string, int>>> splitFile(string file, int splits)
         subFile = file.substr(pos, lengthFrac + 1);
         adjustment = 0;
         while ((pos + lengthFrac + 1 + adjustment) < file.length() &&
-        (file[pos + lengthFrac + 1 + adjustment] & 0xC0) == 128)
+               (file[pos + lengthFrac + 1 + adjustment] & 0xC0) == 128)
         {
             subFile.push_back(file[pos + lengthFrac + 1 + adjustment]);
             adjustment++;
@@ -206,16 +209,29 @@ int main(int argc, char *argv[])
         }
     }
     string fToString;
-    fToString = fileToString("example.txt");
-    vector<future<unordered_map<string, int>>> futures = splitFile(fToString, numThreads);
-    unordered_map<string, int> map = futures.at(0).get();
-    for (int i = 1; i < numThreads; i++)
+    fs::create_directory("output");
+    for (const auto &entry: fs::directory_iterator("./analyze"))
     {
-        map = mergeMap(map, futures.at(i).get());
-    }
-    for (pair<string, int> p : map)
-    {
-        cout << p.first << " " << p.second << endl;
+        const auto &path = entry.path();
+        if (path.extension() != ".txt")
+        {
+            continue;
+        }
+        fToString = fileToString(path);
+        vector<future<unordered_map<string, int>>> futures = splitFile(fToString, numThreads);
+        unordered_map<string, int> map = futures[0].get();
+        for (int i = 1; i < numThreads; i++)
+        {
+            map = mergeMap(map, futures[i].get());
+        }
+        ofstream outFile;
+        const string outPath = "analysis-" + path.stem().string() + ".csv";
+        outFile.open(fs::path("output/" + outPath));
+        outFile << "Bigram,Occurrencies" << endl;
+        for (pair<string, int> p : map)
+        {
+            outFile << "\"" << p.first << "\"," << p.second << endl;
+        }
     }
     cout << endl;
     cout << "eseguito con " << numThreads << " threads." << endl;
