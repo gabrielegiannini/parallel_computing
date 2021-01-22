@@ -41,10 +41,6 @@ int charLenght(char ch)
     {
         charLenght = 3;
     }
-//    else
-//    {
-//        charLenght = 4;
-//    }
     return charLenght;
 }
 
@@ -231,7 +227,7 @@ int main(int argc, char *argv[])
                 continue;
             }
             fToString = fileToString(path);
-            vector < future < unordered_map < string, int>>> futures = splitFile(fToString, numThreads, n);
+            vector<future<unordered_map<string, int>>> futures = splitFile(fToString, numThreads, n);
             unordered_map<string, int> map = futures[0].get();
             for (int i = 1; i < numThreads; i++)
             {
