@@ -192,6 +192,7 @@ int main(int argc, char *argv[])
                 } else
                 {
                     cerr << "il parametro passato non è un numero valido di threads" << endl;
+                    exit(1);
                 }
             }
         } else if (token == "-n")
@@ -202,10 +203,12 @@ int main(int argc, char *argv[])
             } catch (invalid_argument &ex)
             {
                 cerr << "il parametro passato non è un numero valido" << endl;
+                exit(1);
             }
         } else
         {
             cerr << "opzione " << token << " non riconosciuta" << endl;
+            exit(2);
         }
     }
     cout << "computing " << n << "-gram with " << numThreads << " threads." << endl;
@@ -244,3 +247,4 @@ int main(int argc, char *argv[])
         }
     }
 }
+
