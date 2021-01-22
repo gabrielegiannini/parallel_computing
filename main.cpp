@@ -30,7 +30,7 @@ string fileToString(const string &file)
 int charLenght(char ch)
 {
     int test = ch & 0xE0;
-    int charLenght = 0;
+    int charLenght = 4;
     if (test < 128)
     {
         charLenght = 1;
@@ -40,10 +40,11 @@ int charLenght(char ch)
     } else if (test < 240)
     {
         charLenght = 3;
-    } else
-    {
-        charLenght = 4;
     }
+//    else
+//    {
+//        charLenght = 4;
+//    }
     return charLenght;
 }
 
@@ -70,7 +71,7 @@ pair<string, int> compileNgram(int n, const string &file, int initPos)
     return pair<string, int>(b, charLen + initPos);
 }
 
-unordered_map<string, int> ngrams(int n, const string &file, int id)
+unordered_map<string, int> ngrams(int n, const string &file)
 {
     pair<string, int> p = compileNgram(n, file, 0);
     string b = p.first;
@@ -106,7 +107,7 @@ unordered_map<string, int> ngrams(int n, const string &file, int id)
 
 unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordered_map<string, int> futArr2)
 {
-    for (pair<string, int> p : futArr1)
+    for (const auto &p : futArr1)
     {
         if (futArr2.find(p.first) != futArr2.end())
         {
@@ -132,13 +133,13 @@ vector<future<unordered_map<string, int>>> splitFile(string file, unsigned int s
      * (che è lengthFrac + 1, perché ho chiesto sottostringa da 0 lunga lengthFrac + 1, quindi va da 0 a lengthFrac)
      * inizia per 10xxxxxx (in UTF-8) allora
      * è un pezzo di un altro carattere spezzato che inizia in subFile. Riaggiungiamolo in subFile e spostiamo il
-     * "cursore" di uno avanti*/
+     * "cursore" di uno avanti */
     while ((file[lengthFrac + 1 + adjustment] & 0xC0) == 128)
     {
         subFile.push_back(file[lengthFrac + 1 + adjustment]);
         adjustment++;
     }
-    res.push_back(async(launch::async, ngrams, n, subFile, splits));
+    res.push_back(async(launch::async, ngrams, n, subFile));
     for (long i = splits - 1; i > 1; i--)
     {
         unsigned long pos = file.length() - (i * lengthFrac) - 1 + adjustment;
@@ -157,7 +158,7 @@ vector<future<unordered_map<string, int>>> splitFile(string file, unsigned int s
             subFile.push_back(file[pos + lengthFrac + 1 + adjustment]);
             adjustment++;
         }
-        res.push_back(async(launch::async, ngrams, n, subFile, i));
+        res.push_back(async(launch::async, ngrams, n, subFile));
     }
     unsigned int pos = file.length() - lengthFrac - 1 + adjustment;
     while ((file[pos] & 0xC0) == 128)
@@ -166,7 +167,7 @@ vector<future<unordered_map<string, int>>> splitFile(string file, unsigned int s
     }
     // tutto il resto del file
     subFile = file.substr(pos, 2 * lengthFrac);
-    res.push_back(async(launch::async, ngrams, n, subFile, 1));
+    res.push_back(async(launch::async, ngrams, n, subFile));
     return res;
 }
 
@@ -178,18 +179,18 @@ int main(int argc, char *argv[])
      * usare un num di thread in base all'hardware del pc (numThread = n° di thread della cpu)
      * si può passare anche n, ovvero la grandezza degli n-grammi da calcolare
      */
-    int i = 1;
-    while (i < argc)
+    for (int j = 1; j < argc; j++)
     {
-        const string token = string(argv[i]);
+        const string token = string(argv[j]);
+        j++;
         if (token == "-t")
         {
             try
             {
-                numThreads = stoi(argv[++i]);
+                numThreads = stoi(argv[j]);
             } catch (invalid_argument &ex)
             {
-                if (string(argv[i]) == "hw")
+                if (string(argv[j]) == "hw")
                 {
                     numThreads = thread::hardware_concurrency();
                 } else
@@ -201,16 +202,15 @@ int main(int argc, char *argv[])
         {
             try
             {
-                n = stoi(argv[++i]);
+                n = stoi(argv[j]);
             } catch (invalid_argument &ex)
             {
                 cerr << "il parametro passato non è un numero valido" << endl;
             }
         } else
         {
-            cerr << "opzione " << argv[i] << " non riconosciuta" << endl;
+            cerr << "opzione " << token << " non riconosciuta" << endl;
         }
-        i++;
     }
     cout << "computing " << n << "-gram with " << numThreads << " threads." << endl;
     string fToString;
@@ -231,7 +231,7 @@ int main(int argc, char *argv[])
                 continue;
             }
             fToString = fileToString(path);
-            vector<future<unordered_map<string, int>>> futures = splitFile(fToString, numThreads, n);
+            vector < future < unordered_map < string, int>>> futures = splitFile(fToString, numThreads, n);
             unordered_map<string, int> map = futures[0].get();
             for (int i = 1; i < numThreads; i++)
             {
@@ -241,7 +241,7 @@ int main(int argc, char *argv[])
             const string outPath = "analysis-" + path.stem().string() + ".csv";
             outFile.open(fs::path("output/" + outPath));
             outFile << n << "-gram\tOccurrencies" << endl;
-            for (pair<string, int> p : map)
+            for (const auto &p : map)
             {
                 outFile << p.first << "\t" << p.second << endl;
             }
