@@ -44,63 +44,6 @@ int charLenght(char ch)
     return charLenght;
 }
 
-//make groups of n characters
-pair<string, int> compileNgram(int n, const string &file, int initPos)
-{
-    string b;
-    int charLen = charLenght(file[initPos]);
-    for (int i = initPos; i < charLen + initPos; i++)
-    {
-        b.push_back(file[i]);
-    }
-    int offset = charLen;
-    int newLen;
-    for (int j = 1; j < n && offset + initPos < file.length(); j++)
-    {
-        newLen = charLenght(file[offset + initPos]);
-        for (int i = offset + initPos; i < offset + newLen + initPos; i++)
-        {
-            b.push_back(file[i]);
-        }
-        offset += newLen;
-    }
-    return pair<string, int>(b, charLen + initPos);
-}
-
-unordered_map<string, int> ngrams(int n, const string &file)
-{
-    pair<string, int> p = compileNgram(n, file, 0);
-    string b = p.first;
-    vector<string> ngrams(1);
-    ngrams[0] = b;
-    unordered_map<string, int> map;
-    map[b] = 1;
-    for (int i = p.second; i < file.length() - n;)
-    {
-        pair<string, int> p2 = compileNgram(n, file, i);
-        string a = p2.first;
-        i = p2.second;
-        bool exists = false;
-        for (int j = 0; j < ngrams.size(); j++)
-        {
-            if (a == ngrams[j])
-            {
-                exists = true;
-                break;
-            }
-        }
-        if (!exists)
-        {
-            ngrams.push_back(a);
-            map[a] = 1;
-        } else
-        {
-            map[a] = map[a] + 1;
-        }
-    }
-    return map;
-}
-
 unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordered_map<string, int> futArr2)
 {
     for (const auto &p : futArr1)
@@ -118,54 +61,150 @@ unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordere
     return futArr2;
 }
 
-vector<future<unordered_map<string, int>>> splitFile(string file, unsigned int splits, int n)
+class NGramFreqComputer
 {
-    vector<future<unordered_map<string, int>>> res(0);
-    int adjustment = 0;
-    unsigned long lengthFrac = file.length() / splits;
-    string subFile = file.substr(0, lengthFrac + 1);
+private:
+    string file;
+    const int n;
+    const unsigned int splits;
 
-    /* se il primo byte di file dopo l'ultimo incluso in subFile
-     * (che è lengthFrac + 1, perché ho chiesto sottostringa da 0 lunga lengthFrac + 1, quindi va da 0 a lengthFrac)
-     * inizia per 10xxxxxx (in UTF-8) allora
-     * è un pezzo di un altro carattere spezzato che inizia in subFile. Riaggiungiamolo in subFile e spostiamo il
-     * "cursore" di uno avanti */
-    while ((file[lengthFrac + 1 + adjustment] & 0xC0) == 128)
+    //make groups of n characters
+    pair<string, int> compileNgram(int initPos)
     {
-        subFile.push_back(file[lengthFrac + 1 + adjustment]);
-        adjustment++;
+        string b;
+        int charLen = charLenght(file[initPos]);
+        for (int i = initPos; i < charLen + initPos; i++)
+        {
+            b.push_back(file[i]);
+        }
+        int offset = charLen;
+        int newLen;
+        for (int j = 1; j < n && offset + initPos < file.length(); j++)
+        {
+            newLen = charLenght(file[offset + initPos]);
+            for (int i = offset + initPos; i < offset + newLen + initPos; i++)
+            {
+                b.push_back(file[i]);
+            }
+            offset += newLen;
+        }
+        return pair<string, int>(b, charLen + initPos);
     }
-    res.push_back(async(launch::async, ngrams, n, subFile));
-    for (long i = splits - 1; i > 1; i--)
+
+    unordered_map<string, int> ngrams(const string &text)
     {
-        unsigned long pos = file.length() - (i * lengthFrac) - 1 + adjustment;
-        /* ora riscorriamo all'indietro per tornare all'inizio dell'ultimo carattere messo in subFile (che dovrà
-         * essere anche il primo carattere del nuovo subFile perché si sovrappongono di 1 carattere)
-         * */
+        pair<string, int> p = compileNgram(0);
+        string b = p.first;
+        vector<string> ngrams(1);
+        ngrams[0] = b;
+        unordered_map<string, int> map;
+        map[b] = 1;
+        for (int i = p.second; i < text.length() - n;)
+        {
+            pair<string, int> p2 = compileNgram(i);
+            string a = p2.first;
+            i = p2.second;
+            bool exists = false;
+            for (int j = 0; j < ngrams.size(); j++)
+            {
+                if (a == ngrams[j])
+                {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists)
+            {
+                ngrams.push_back(a);
+                map[a] = 1;
+            } else
+            {
+                map[a] = map[a] + 1;
+            }
+        }
+        return map;
+    }
+
+    vector<future<unordered_map<string, int>>> splitFile()
+    {
+        vector<future<unordered_map<string, int>>> res(0);
+        int adjustment = 0;
+        unsigned long lengthFrac = file.length() / splits;
+        string subFile = file.substr(0, lengthFrac + 1);
+
+        /* se il primo byte di file dopo l'ultimo incluso in subFile
+         * (che è lengthFrac + 1, perché ho chiesto sottostringa da 0 lunga lengthFrac + 1, quindi va da 0 a lengthFrac)
+         * inizia per 10xxxxxx (in UTF-8) allora
+         * è un pezzo di un altro carattere spezzato che inizia in subFile. Riaggiungiamolo in subFile e spostiamo il
+         * "cursore" di uno avanti */
+        while ((file[lengthFrac + 1 + adjustment] & 0xC0) == 128)
+        {
+            subFile.push_back(file[lengthFrac + 1 + adjustment]);
+            adjustment++;
+        }
+        res.push_back(async(launch::async, [this, subFile] { return this->ngrams(subFile); }));
+        for (long i = splits - 1; i > 1; i--)
+        {
+            unsigned long pos = file.length() - (i * lengthFrac) - 1 + adjustment;
+            /* ora riscorriamo all'indietro per tornare all'inizio dell'ultimo carattere messo in subFile (che dovrà
+             * essere anche il primo carattere del nuovo subFile perché si sovrappongono di 1 carattere)
+             * */
+            while ((file[pos] & 0xC0) == 128)
+            {
+                pos--;
+            }
+            subFile = file.substr(pos, lengthFrac + 1);
+            adjustment = 0;
+            while ((pos + lengthFrac + 1 + adjustment) < file.length() &&
+                   (file[pos + lengthFrac + 1 + adjustment] & 0xC0) == 128)
+            {
+                subFile.push_back(file[pos + lengthFrac + 1 + adjustment]);
+                adjustment++;
+            }
+            res.push_back(async(launch::async, [this, subFile] { return this->ngrams(subFile); }));
+        }
+        unsigned int pos = file.length() - lengthFrac - 1 + adjustment;
         while ((file[pos] & 0xC0) == 128)
         {
             pos--;
         }
-        subFile = file.substr(pos, lengthFrac + 1);
-        adjustment = 0;
-        while ((pos + lengthFrac + 1 + adjustment) < file.length() &&
-               (file[pos + lengthFrac + 1 + adjustment] & 0xC0) == 128)
-        {
-            subFile.push_back(file[pos + lengthFrac + 1 + adjustment]);
-            adjustment++;
-        }
-        res.push_back(async(launch::async, ngrams, n, subFile));
+        // tutto il resto del file
+        subFile = file.substr(pos, 2 * lengthFrac);
+        res.push_back(async(launch::async, [this, subFile] { return this->ngrams(subFile); }));
+        return res;
     }
-    unsigned int pos = file.length() - lengthFrac - 1 + adjustment;
-    while ((file[pos] & 0xC0) == 128)
+
+public:
+    explicit NGramFreqComputer(const string &filePath, int n, unsigned int splits) : n(n), splits(splits)
     {
-        pos--;
+        string s;
+        ifstream myfile;
+        myfile.open(filePath);
+        while (!myfile.eof())
+        {
+            getline(myfile, s);
+            file += s + " ";
+        }
+        myfile.close();
     }
-    // tutto il resto del file
-    subFile = file.substr(pos, 2 * lengthFrac);
-    res.push_back(async(launch::async, ngrams, n, subFile));
-    return res;
-}
+
+    string csvOutput()
+    {
+        vector<future<unordered_map<string, int>>> futures = splitFile();
+        unordered_map<string, int> map = futures[0].get();
+        for (int i = 1; i < splits; i++)
+        {
+            map = mergeMap(map, futures[i].get());
+        }
+        stringstream outString;
+        outString << n << "-gram\tOccurrencies" << endl;
+        for (const auto &p : map)
+        {
+            outString << p.first << "\t" << p.second << endl;
+        }
+        return outString.str();
+    }
+};
 
 int main(int argc, char *argv[])
 {
@@ -221,7 +260,6 @@ int main(int argc, char *argv[])
         cout << "nothing to analyze!" << endl;
     } else
     {
-
         for (const auto &entry: fs::directory_iterator("./analyze"))
         {
             const auto &path = entry.path();
@@ -229,21 +267,11 @@ int main(int argc, char *argv[])
             {
                 continue;
             }
-            fToString = fileToString(path);
-            vector<future<unordered_map<string, int>>> futures = splitFile(fToString, numThreads, n);
-            unordered_map<string, int> map = futures[0].get();
-            for (int i = 1; i < numThreads; i++)
-            {
-                map = mergeMap(map, futures[i].get());
-            }
+            NGramFreqComputer computer(path, n, numThreads);
             ofstream outFile;
             const string outPath = "analysis-" + path.stem().string() + ".csv";
             outFile.open(fs::path("output/" + outPath));
-            outFile << n << "-gram\tOccurrencies" << endl;
-            for (const auto &p : map)
-            {
-                outFile << p.first << "\t" << p.second << endl;
-            }
+            outFile << computer.csvOutput();
         }
     }
 }
