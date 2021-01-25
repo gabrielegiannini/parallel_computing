@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <future>
 #include <filesystem>
+#include <thread>
 
 namespace fs = std::filesystem;
 
@@ -134,12 +135,25 @@ public:
     }
 };
 
+unordered_map<string, int>
+collect(NGramFreqComputer computer, const string &text, vector<future<unordered_map<string, int>>> collectable)
+{
+    auto map = computer.ngrams(text);
+    for (auto &fut : collectable)
+    {
+        auto m = fut.get();
+        map = mergeMap(map, m);
+    }
+    return map;
+}
+
 class FileSplitter
 {
     const string &path;
     string content;
     const unsigned int splits;
     NGramFreqComputer &computer;
+    future<unordered_map<string, int>> fut;
 
 public:
     FileSplitter(const string &path, const unsigned splits, NGramFreqComputer &freqComputer) : path(path),
@@ -155,11 +169,13 @@ public:
             content += s + " ";
         }
         myfile.close();
+
+        fut = splitFile();
     }
 
-    vector<future<unordered_map<string, int>>> splitFile()
+    future<unordered_map<string, int>> splitFile()
     {
-        vector<future<unordered_map<string, int>>> res(0);
+        vector<future<unordered_map<string, int>>> result(0);
         int adjustment = 0;
         unsigned long lengthFrac = content.length() / splits;
         string subFile = content.substr(0, lengthFrac + 1);
@@ -174,8 +190,10 @@ public:
             subFile.push_back(content[lengthFrac + 1 + adjustment]);
             adjustment++;
         }
-        res.push_back(async(launch::async, [this, subFile] { return this->computer.ngrams(subFile); }));
-        for (long i = splits - 1; i > 1; i--)
+
+        result.push_back(
+                async(launch::async, collect, this->computer, subFile, vector<future<unordered_map<string, int>>>()));
+        for (unsigned long i = splits - 1; i > 1; i--)
         {
             unsigned long pos = content.length() - (i * lengthFrac) - 1 + adjustment;
             /* ora riscorriamo all'indietro per tornare all'inizio dell'ultimo carattere messo in subFile (che dovrà
@@ -193,7 +211,17 @@ public:
                 subFile.push_back(content[pos + lengthFrac + 1 + adjustment]);
                 adjustment++;
             }
-            res.push_back(async(launch::async, [this, subFile] { return this->computer.ngrams(subFile); }));
+            vector<future<unordered_map<string, int>>> toWaitForReduction;
+            const unsigned int size = result.size();
+            unsigned int k = 1;
+            unsigned int target = (i - 1) ^k;
+            while ((splits - 1 - target) < size && target > (i - 1))
+            {
+                toWaitForReduction.push_back(std::move(result[splits - 1 - target]));
+                k = k << 1;
+                target = (i - 1) ^ k;
+            }
+            result.push_back(async(launch::async, collect, this->computer, subFile, std::move(toWaitForReduction)));
         }
         unsigned int pos = content.length() - lengthFrac - 1 + adjustment;
         while ((content[pos] & 0xC0) == 128)
@@ -202,18 +230,24 @@ public:
         }
         // tutto il resto del file
         subFile = content.substr(pos, 2 * lengthFrac);
-        res.push_back(async(launch::async, [this, subFile] { return this->computer.ngrams(subFile); }));
-        return res;
+        vector<future<unordered_map<string, int>>> toWaitForReduction;
+        const unsigned int size = result.size();
+        unsigned int k = 1;
+        while ((splits - 1 - k) < size)
+        {
+            toWaitForReduction.push_back(std::move(result[splits - 1 - k]));
+            k = k << 1;
+        }
+//        result.push_back(async(launch::async, collect, this->computer, subFile, toWaitForReduction));
+//        return result;
+        return async(launch::async, collect, this->computer, subFile, std::move(toWaitForReduction));
     }
 
     string collectCsvOutput()
     {
-        vector<future<unordered_map<string, int>>> futures = splitFile();
-        unordered_map<string, int> map = futures[0].get();
-        for (int i = 1; i < splits; i++)
-        {
-            map = mergeMap(map, futures[i].get());
-        }
+//        vector<future<unordered_map<string, int>>> futures = splitFile();
+//        future<unordered_map<string, int>> fut = splitFile();
+        unordered_map<string, int> map = fut.get();
         stringstream outString;
         outString << computer.getN() << "-gram\tOccurrencies" << endl;
         for (const auto &p : map)
@@ -221,6 +255,11 @@ public:
             outString << p.first << "\t" << p.second << endl;
         }
         return outString.str();
+    }
+
+    const string &getPath()
+    {
+        return path;
     }
 };
 
@@ -268,10 +307,6 @@ int main(int argc, char *argv[])
             exit(2);
         }
     }
-    cout << "computing " << n << "-gram with " << numThreads << " threads." << endl;
-    NGramFreqComputer computer(n);
-    string fToString;
-    fs::create_directory("output");
     const fs::path inputP{"analyze"};
     if (!fs::exists(inputP) || fs::is_empty(inputP))
     {
@@ -279,6 +314,10 @@ int main(int argc, char *argv[])
         cout << "nothing to analyze!" << endl;
     } else
     {
+        cout << "computing " << n << "-gram with " << numThreads << " threads." << endl;
+        fs::create_directory("output");
+        NGramFreqComputer computer(n);
+        vector<FileSplitter> splitters;
         for (const auto &entry: fs::directory_iterator("./analyze"))
         {
             const auto &path = entry.path();
@@ -286,11 +325,15 @@ int main(int argc, char *argv[])
             {
                 continue;
             }
-            FileSplitter splitter(path, numThreads, computer);
+            splitters.emplace_back(FileSplitter(path, numThreads, computer));
+        }
+        for (auto &s : splitters)
+        {
+            const auto path = fs::path(s.getPath());
             ofstream outFile;
             const string outPath = "analysis-" + path.stem().string() + ".csv";
             outFile.open(fs::path("output/" + outPath));
-            outFile << splitter.collectCsvOutput();
+            outFile << s.collectCsvOutput();
         }
     }
 }
