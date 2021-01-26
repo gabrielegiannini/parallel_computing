@@ -2,3 +2,4 @@ a.out
 ngrams
 cmake-build*
 output
+ngrams-omp
