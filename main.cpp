@@ -149,14 +149,14 @@ collect(NGramFreqComputer computer, const string &text, vector<future<unordered_
 
 class FileSplitter
 {
-    const string &path;
+    const fs::path path;
     string content;
     const unsigned int splits;
     NGramFreqComputer &computer;
     future<unordered_map<string, int>> fut;
 
 public:
-    FileSplitter(const string &path, const unsigned splits, NGramFreqComputer &freqComputer) : path(path),
+    FileSplitter(const fs::path path, const unsigned splits, NGramFreqComputer &freqComputer) : path(path),
                                                                                                splits(splits),
                                                                                                computer(freqComputer)
     {
@@ -257,7 +257,7 @@ public:
         return outString.str();
     }
 
-    const string &getPath()
+    const fs::path &getPath()
     {
         return path;
     }
@@ -329,7 +329,7 @@ int main(int argc, char *argv[])
         }
         for (auto &s : splitters)
         {
-            const auto path = fs::path(s.getPath());
+            const auto path = s.getPath();
             ofstream outFile;
             const string outPath = "analysis-" + path.stem().string() + ".csv";
             outFile.open(fs::path("output/" + outPath));
