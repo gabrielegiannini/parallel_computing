@@ -1,7 +1,6 @@
 #include <iostream>
 #include <string>
 #include <fstream>
-#include <sstream>
 #include <vector>
 #include <unordered_map>
 #include <future>
@@ -235,50 +234,40 @@ int main(int argc, char *argv[])
     {
         omp_set_dynamic(0);
         omp_set_num_threads(numThreads);
-#pragma omp parallel
+        for (const auto &entry : fs::directory_iterator("./analyze"))
         {
-#pragma omp single
+            const auto &path = entry.path();
+            if (path.extension() != ".txt")
             {
-                for (const auto &entry : fs::directory_iterator("./analyze"))
-                {
-                    const auto &path = entry.path();
-                    if (path.extension() != ".txt")
-                    {
-                        continue;
-                    }
-#pragma omp task firstprivate(path)
-                    {
-
-                        fToString = fileToString(path);
-                        vector<string> fileSplitted = splitFile(fToString, numThreads, n);
-                        vector<unordered_map<string, int>> results(fileSplitted.size());
+                continue;
+            }
+            fToString = fileToString(path);
+            vector<string> fileSplitted = splitFile(fToString, numThreads, n);
+            vector<unordered_map<string, int>> results(fileSplitted.size());
 #pragma omp parallel for schedule(dynamic, 1) default(none) shared(fileSplitted, results, n)
-                        for (int i = 0; i < fileSplitted.size(); i++)
-                        {
-                            results[i] = ngrams(n, fileSplitted[i]);
-                        }
-                        unordered_map<string, int> map;
-                        for (int k = 1; k < fileSplitted.size(); k = k << 1)
-                        {
-#pragma omp parallel for schedule(dynamic, 1) default(none) shared(results, k)
-                            for (int i = 0; i < results.size(); i++)
-                            {
-                                if ((i ^ k) > i && (i ^ k) < results.size())
-                                {
-                                    results[i] = mergeMap(results[i], results[i ^ k]);
-                                }
-                            }
-                        }
-                        ofstream outFile;
-                        const string outPath = "analysis-" + path.stem().string() + ".csv";
-                        outFile.open(fs::path("output/" + outPath));
-                        outFile << n << "-gram\tOccurrencies" << endl;
-                        for (const auto &p : results[0])
-                        {
-                            outFile << p.first << "\t" << p.second << endl;
-                        }
+            for (int i = 0; i < fileSplitted.size(); i++)
+            {
+                results[i] = ngrams(n, fileSplitted[i]);
+            }
+            unordered_map<string, int> map;
+            for (int k = 1; k < fileSplitted.size(); k = k << 1)
+            {
+#pragma omp parallel for schedule(dynamic, 1) default(none) shared(results,k)
+                for (int i = 0; i < results.size(); i++)
+                {
+                    if ((i ^ k) > i && (i ^ k) < results.size())
+                    {
+                        results[i] = mergeMap(results[i], results[i ^ k]);
                     }
                 }
+            }
+            ofstream outFile;
+            const string outPath = "analysis-" + path.stem().string() + ".csv";
+            outFile.open(fs::path("output/" + outPath));
+            outFile << n << "-gram\tOccurrencies" << endl;
+            for (const auto &p : results[0])
+            {
+                outFile << p.first << "\t" << p.second << endl;
             }
         }
     }

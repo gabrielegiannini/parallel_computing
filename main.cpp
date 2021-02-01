@@ -1,7 +1,6 @@
 #include <iostream>
 #include <string>
 #include <fstream>
-#include <sstream>
 #include <utility>
 #include <vector>
 #include <unordered_map>
@@ -37,12 +36,10 @@ int charLenght(char ch)
     if (test < 128)
     {
         charLenght = 1;
-    }
-    else if (test < 224)
+    } else if (test < 224)
     {
         charLenght = 2;
-    }
-    else if (test < 240)
+    } else if (test < 240)
     {
         charLenght = 3;
     }
@@ -57,8 +54,7 @@ unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordere
         {
             futArr2[p.first] = futArr2[p.first] + futArr1[p.first];
             futArr1[p.first] = 0;
-        }
-        else
+        } else
         {
             futArr2[p.first] = futArr1[p.first];
             futArr1[p.first] = 0;
@@ -122,8 +118,7 @@ public:
             {
                 ngrams.push_back(a);
                 map[a] = 1;
-            }
-            else
+            } else
             {
                 map[a] = map[a] + 1;
             }
@@ -132,8 +127,7 @@ public:
     }
 
     explicit NGramFreqComputer(int n) : n(n)
-    {
-    }
+    {}
 
     [[nodiscard]] int getN() const
     {
@@ -163,8 +157,8 @@ class FileSplitter
 
 public:
     FileSplitter(const fs::path path, const unsigned splits, NGramFreqComputer &freqComputer) : path(path),
-                                                                                                splits(splits),
-                                                                                                computer(freqComputer)
+                                                                                               splits(splits),
+                                                                                               computer(freqComputer)
     {
         string s;
         ifstream myfile;
@@ -198,7 +192,7 @@ public:
         }
 
         result.push_back(
-            async(launch::async, collect, this->computer, subFile, vector<future<unordered_map<string, int>>>()));
+                async(launch::async, collect, this->computer, subFile, vector<future<unordered_map<string, int>>>()));
         for (unsigned long i = splits - 1; i > 1; i--)
         {
             unsigned long pos = content.length() - (i * lengthFrac) - 1 + adjustment;
@@ -220,7 +214,7 @@ public:
             vector<future<unordered_map<string, int>>> toWaitForReduction;
             const unsigned int size = result.size();
             unsigned int k = 1;
-            unsigned int target = (i - 1) ^ k;
+            unsigned int target = (i - 1) ^k;
             while ((splits - 1 - target) < size && target > (i - 1))
             {
                 toWaitForReduction.push_back(std::move(result[splits - 1 - target]));
@@ -244,15 +238,15 @@ public:
             toWaitForReduction.push_back(std::move(result[splits - 1 - k]));
             k = k << 1;
         }
-        //        result.push_back(async(launch::async, collect, this->computer, subFile, toWaitForReduction));
-        //        return result;
+//        result.push_back(async(launch::async, collect, this->computer, subFile, toWaitForReduction));
+//        return result;
         return async(launch::async, collect, this->computer, subFile, std::move(toWaitForReduction));
     }
 
     string collectCsvOutput()
     {
-        //        vector<future<unordered_map<string, int>>> futures = splitFile();
-        //        future<unordered_map<string, int>> fut = splitFile();
+//        vector<future<unordered_map<string, int>>> futures = splitFile();
+//        future<unordered_map<string, int>> fut = splitFile();
         unordered_map<string, int> map = fut.get();
         stringstream outString;
         outString << computer.getN() << "-gram\tOccurrencies" << endl;
@@ -286,33 +280,28 @@ int main(int argc, char *argv[])
             try
             {
                 numThreads = stoi(argv[j]);
-            }
-            catch (invalid_argument &ex)
+            } catch (invalid_argument &ex)
             {
                 if (string(argv[j]) == "hw")
                 {
                     numThreads = thread::hardware_concurrency();
-                }
-                else
+                } else
                 {
                     cerr << "il parametro passato non è un numero valido di threads" << endl;
                     exit(1);
                 }
             }
-        }
-        else if (token == "-n")
+        } else if (token == "-n")
         {
             try
             {
                 n = stoi(argv[j]);
-            }
-            catch (invalid_argument &ex)
+            } catch (invalid_argument &ex)
             {
                 cerr << "il parametro passato non è un numero valido" << endl;
                 exit(1);
             }
-        }
-        else
+        } else
         {
             cerr << "opzione " << token << " non riconosciuta" << endl;
             exit(2);
@@ -323,14 +312,13 @@ int main(int argc, char *argv[])
     {
         cout << "Put all the .txt files to be analyzed in an 'analyze' directory:" << endl;
         cout << "nothing to analyze!" << endl;
-    }
-    else
+    } else
     {
         cout << "computing " << n << "-gram with " << numThreads << " threads." << endl;
         fs::create_directory("output");
         NGramFreqComputer computer(n);
         vector<FileSplitter> splitters;
-        for (const auto &entry : fs::directory_iterator("./analyze"))
+        for (const auto &entry: fs::directory_iterator("./analyze"))
         {
             const auto &path = entry.path();
             if (path.extension() != ".txt")
@@ -349,3 +337,4 @@ int main(int argc, char *argv[])
         }
     }
 }
+
