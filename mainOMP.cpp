@@ -36,12 +36,10 @@ int charLenght(char ch)
     if (test < 128)
     {
         charLenght = 1;
-    }
-    else if (test < 224)
+    } else if (test < 224)
     {
         charLenght = 2;
-    }
-    else if (test < 240)
+    } else if (test < 240)
     {
         charLenght = 3;
     }
@@ -75,7 +73,7 @@ unordered_map<string, int> ngrams(int n, const string &file)
 {
     pair<string, int> p = compileNgram(n, file, 0);
     string b = p.first;
-    vector<string> ngrams(1);
+    vector <string> ngrams(1);
     ngrams[0] = b;
     unordered_map<string, int> map;
     map[b] = 1;
@@ -97,8 +95,7 @@ unordered_map<string, int> ngrams(int n, const string &file)
         {
             ngrams.push_back(a);
             map[a] = 1;
-        }
-        else
+        } else
         {
             map[a] = map[a] + 1;
         }
@@ -114,8 +111,7 @@ unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordere
         {
             futArr2[p.first] = futArr2[p.first] + futArr1[p.first];
             futArr1[p.first] = 0;
-        }
-        else
+        } else
         {
             futArr2[p.first] = futArr1[p.first];
             futArr1[p.first] = 0;
@@ -124,9 +120,9 @@ unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordere
     return futArr2;
 }
 
-vector<string> splitFile(string file, unsigned int splits, int n)
+vector <string> splitFile(string file, unsigned int splits, int n)
 {
-    vector<string> res(0);
+    vector <string> res(0);
     int adjustment = 0;
     unsigned long lengthFrac = file.length() / splits;
     string subFile = file.substr(0, lengthFrac + 1);
@@ -196,15 +192,13 @@ int main(int argc, char *argv[])
                 if (string(argv[j]) == "hw")
                 {
                     numThreads = thread::hardware_concurrency();
-                }
-                else
+                } else
                 {
                     cerr << "il parametro passato non è un numero valido di threads" << endl;
                     exit(1);
                 }
             }
-        }
-        else if (token == "-n")
+        } else if (token == "-n")
         {
             try
             {
@@ -215,8 +209,7 @@ int main(int argc, char *argv[])
                 cerr << "il parametro passato non è un numero valido" << endl;
                 exit(1);
             }
-        }
-        else
+        } else
         {
             cerr << "opzione " << token << " non riconosciuta" << endl;
             exit(2);
@@ -230,54 +223,58 @@ int main(int argc, char *argv[])
     {
         cout << "Put all the .txt files to be analyzed in an 'analyze' directory:" << endl;
         cout << "nothing to analyze!" << endl;
-    }
-    else
+    } else
     {
         omp_set_dynamic(0);
         omp_set_num_threads(numThreads);
-#pragma omp parallel
+        vector <fs::path> files;
+        for (const auto &entry : fs::directory_iterator("./analyze"))
         {
-#pragma omp single
+            const auto &path = entry.path();
+            if (path.extension() != ".txt")
             {
-                for (const auto &entry : fs::directory_iterator("./analyze"))
-                {
-                    const auto &path = entry.path();
-                    if (path.extension() != ".txt")
-                    {
-                        continue;
-                    }
-#pragma omp task firstprivate(path)
-                    {
+                continue;
+            }
+            files.push_back(path);
+        }
+//#pragma omp parallel default(none) shared(numThreads,n) private(fToString)
 
-                        fToString = fileToString(path);
-                        vector<string> fileSplitted = splitFile(fToString, numThreads, n);
-                        vector<unordered_map<string, int>> results(fileSplitted.size());
+//#pragma omp master
+
+
+//#pragma omp parallel default(none) shared(numThreads, n, files) private(fToString)
+        {
+#pragma omp parallel for schedule(dynamic, 1) default(none) shared(numThreads, n, files) private(fToString)
+            for (int m = 0; m < files.size(); m++)
+            {
+                fs::path path = files[m];
+                fToString = fileToString(path);
+                vector <string> fileSplitted = splitFile(fToString, numThreads, n);
+                vector <unordered_map<string, int>> results(fileSplitted.size());
 #pragma omp parallel for schedule(dynamic, 1) default(none) shared(fileSplitted, results, n)
-                        for (int i = 0; i < fileSplitted.size(); i++)
-                        {
-                            results[i] = ngrams(n, fileSplitted[i]);
-                        }
-                        unordered_map<string, int> map;
-                        for (int k = 1; k < fileSplitted.size(); k = k << 1)
-                        {
+                for (int i = 0; i < fileSplitted.size(); i++)
+                {
+                    results[i] = ngrams(n, fileSplitted[i]);
+                }
+                unordered_map<string, int> map;
+                for (int k = 1; k < fileSplitted.size(); k = k << 1)
+                {
 #pragma omp parallel for schedule(dynamic, 1) default(none) shared(results, k)
-                            for (int i = 0; i < results.size(); i++)
-                            {
-                                if ((i ^ k) > i && (i ^ k) < results.size())
-                                {
-                                    results[i] = mergeMap(results[i], results[i ^ k]);
-                                }
-                            }
-                        }
-                        ofstream outFile;
-                        const string outPath = "analysis-" + path.stem().string() + ".csv";
-                        outFile.open(fs::path("output/" + outPath));
-                        outFile << n << "-gram\tOccurrencies" << endl;
-                        for (const auto &p : results[0])
+                    for (int i = 0; i < results.size(); i++)
+                    {
+                        if ((i ^ k) > i && (i ^ k) < results.size())
                         {
-                            outFile << p.first << "\t" << p.second << endl;
+                            results[i] = mergeMap(results[i], results[i ^ k]);
                         }
                     }
+                }
+                ofstream outFile;
+                const string outPath = "analysis-" + path.stem().string() + ".csv";
+                outFile.open(fs::path("output/" + outPath));
+                outFile << n << "-gram\tOccurrencies" << endl;
+                for (const auto &p : results[0])
+                {
+                    outFile << p.first << "\t" << p.second << endl;
                 }
             }
         }
