@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 project(parallel_computing)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fopenmp")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Xpreprocessor -fopenmp -lomp")
+include_directories(/opt/local/include/libomp)
+link_directories(/opt/local/lib/libomp)
 
 find_package(Threads REQUIRED)
 add_executable(ngrams main.cpp)

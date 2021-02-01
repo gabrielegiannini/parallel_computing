@@ -1,0 +1,1 @@
+/Library/Developer/CommandLineTools/usr/bin/c++  -O3 -Xpreprocessor -fopenmp -lomp -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX11.1.sdk -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/ngrams-omp.dir/mainOMP.cpp.o -o ngrams-omp   -L/opt/local/lib/libomp 

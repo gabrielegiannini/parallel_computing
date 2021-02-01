@@ -1,0 +1,4 @@
+/Users/gabrielegiannini/Desktop/Parallel computing/parallel_computing/CMakeFiles/rebuild_cache.dir
+/Users/gabrielegiannini/Desktop/Parallel computing/parallel_computing/CMakeFiles/edit_cache.dir
+/Users/gabrielegiannini/Desktop/Parallel computing/parallel_computing/CMakeFiles/ngrams-omp.dir
+/Users/gabrielegiannini/Desktop/Parallel computing/parallel_computing/CMakeFiles/ngrams.dir
