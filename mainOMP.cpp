@@ -70,31 +70,43 @@ pair<string, int> compileNgram(int n, const string &file, int initPos)
     return pair<string, int>(b, charLen + initPos);
 }
 
-unordered_map<string, int> ngrams(int n, const string &file)
+//make groups of n words
+pair<string, int> compileNwords(int n, const string &file, int initPos)
 {
-    pair<string, int> p = compileNgram(n, file, 0);
+    string b;
+    int wordLen;
+    int i = initPos;
+    for(int k = 0; k < n; k++)
+    {
+        while(i < file.length() && file[i] != ' ' && file[i] != '\0')
+        {
+            b.push_back(file[i]);
+            i++;
+        }
+        b.push_back(' ');
+        if(k==0)
+        {
+            wordLen = b.size();
+        }
+        i++; //superiamo lo spazio
+    }
+    return pair<string, int>(b, wordLen + initPos);
+}
+
+unordered_map<string, int> ngrams(int n, const string &file, bool isNGram)
+{
+    auto functionToInvoke = isNGram ? compileNgram : compileNwords;
+    pair<string, int> p = functionToInvoke(n, file, 0);
     string b = p.first;
-    vector<string> ngrams(1);
-    ngrams[0] = b;
     unordered_map<string, int> map;
     map[b] = 1;
     for (int i = p.second; i < file.length() - n;)
     {
-        pair<string, int> p2 = compileNgram(n, file, i);
+        pair<string, int> p2 = functionToInvoke(n, file, i);
         string a = p2.first;
         i = p2.second;
-        bool exists = false;
-        for (int j = 0; j < ngrams.size(); j++)
+        if (map.find(a) == map.end())
         {
-            if (a == ngrams[j])
-            {
-                exists = true;
-                break;
-            }
-        }
-        if (!exists)
-        {
-            ngrams.push_back(a);
             map[a] = 1;
         }
         else
@@ -112,18 +124,18 @@ unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordere
         if (futArr2.find(p.first) != futArr2.end())
         {
             futArr2[p.first] = futArr2[p.first] + futArr1[p.first];
-            futArr1[p.first] = 0;
+//            futArr1[p.first] = 0;
         }
         else
         {
             futArr2[p.first] = futArr1[p.first];
-            futArr1[p.first] = 0;
+//            futArr1[p.first] = 0;
         }
     }
     return futArr2;
 }
 
-vector<string> splitFile(string file, unsigned int splits, int n)
+vector<string> splitFile(string file, unsigned int splits)
 {
     vector<string> res(0);
     int adjustment = 0;
@@ -176,6 +188,7 @@ int main(int argc, char *argv[])
 {
     int n = 2;
     int numThreads = THREADS;
+    bool isNgram = true;
     /* si può passare al programma il numero di thread da avviare, default 4, oopure "hw" per indicare che deve
      * usare un num di thread in base all'hardware del pc (numThread = n° di thread della cpu)
      * si può passare anche n, ovvero la grandezza degli n-grammi da calcolare
@@ -215,13 +228,17 @@ int main(int argc, char *argv[])
                 exit(1);
             }
         }
+        else if(token == "-w")
+        {
+            isNgram = false;
+        }
         else
         {
             cerr << "opzione " << token << " non riconosciuta" << endl;
             exit(2);
         }
     }
-    cout << "computing " << n << "-gram with " << numThreads << " threads." << endl;
+    cout << "computing " << n << (isNgram ? "-gram" : "-word") << " with " << numThreads << " threads." << endl;
     string fToString;
     fs::create_directory("output");
     const fs::path inputP{"analyze"};
@@ -242,12 +259,12 @@ int main(int argc, char *argv[])
                 continue;
             }
             fToString = fileToString(path);
-            vector<string> fileSplitted = splitFile(fToString, numThreads, n);
+            vector<string> fileSplitted = splitFile(fToString, numThreads);
             vector<unordered_map<string, int>> results(fileSplitted.size());
-#pragma omp parallel for schedule(dynamic, 1) default(none) shared(fileSplitted, results, n)
+#pragma omp parallel for schedule(dynamic, 1) default(none) shared(fileSplitted, results, n,isNgram)
             for (int i = 0; i < fileSplitted.size(); i++)
             {
-                results[i] = ngrams(n, fileSplitted[i]);
+                results[i] = ngrams(n, fileSplitted[i], isNgram);
             }
             unordered_map<string, int> map;
             for (int k = 1; k < fileSplitted.size(); k = k << 1)
