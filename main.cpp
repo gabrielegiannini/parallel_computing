@@ -53,11 +53,9 @@ unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordere
         if (futArr2.find(p.first) != futArr2.end())
         {
             futArr2[p.first] = futArr2[p.first] + futArr1[p.first];
-            futArr1[p.first] = 0;
         } else
         {
             futArr2[p.first] = futArr1[p.first];
-            futArr1[p.first] = 0;
         }
     }
     return futArr2;
@@ -69,8 +67,10 @@ private:
     const int n;
 
 public:
+    pair<string, int> (NGramFreqComputer::*compile) (const string &file, const int initPos) const;
+
     //make groups of n characters
-    [[nodiscard]] pair<string, int> compileNgram(const string &file, int initPos) const
+    [[nodiscard]] pair<string, int> compileNgram(const string &file, const int initPos) const
     {
         string b;
         int charLen = charLenght(file[initPos]);
@@ -92,31 +92,43 @@ public:
         return pair<string, int>(b, charLen + initPos);
     }
 
+    //make groups of n words
+    [[nodiscard]] pair<string, int> compileNwords(const string &file, const int initPos) const
+    {
+        string b;
+        int wordLen;
+        int i = initPos;
+        for(int k = 0; k < n; k++)
+        {
+            while(i < file.length() && file[i] != ' ' && file[i] != '\0')
+            {
+                b.push_back(file[i]);
+                i++;
+            }
+            b.push_back(' ');
+            if(k==0)
+            {
+                wordLen = b.size();
+            }
+            i++;
+        }
+        return pair<string, int>(b, wordLen + initPos);
+    }
+
     [[nodiscard]] unordered_map<string, int> ngrams(const string &text) const
     {
-        pair<string, int> p = compileNgram(text, 0);
+        pair<string, int> p = (this->*compile)(text, 0);
         string b = p.first;
-        vector<string> ngrams(1);
-        ngrams[0] = b;
         unordered_map<string, int> map;
         map[b] = 1;
         for (int i = p.second; i < text.length() - n;)
         {
-            pair<string, int> p2 = compileNgram(text, i);
+            pair<string, int> p2 = (this->*compile)(text, i);
             string a = p2.first;
             i = p2.second;
             bool exists = false;
-            for (int j = 0; j < ngrams.size(); j++)
+            if (map.find(a) == map.end())
             {
-                if (a == ngrams[j])
-                {
-                    exists = true;
-                    break;
-                }
-            }
-            if (!exists)
-            {
-                ngrams.push_back(a);
                 map[a] = 1;
             } else
             {
@@ -126,8 +138,10 @@ public:
         return map;
     }
 
-    explicit NGramFreqComputer(int n) : n(n)
-    {}
+    explicit NGramFreqComputer(int n, const bool isNGram) : n(n)
+    {
+        compile = isNGram ? &NGramFreqComputer::compileNgram : &NGramFreqComputer::compileNwords;
+    }
 
     [[nodiscard]] int getN() const
     {
@@ -156,7 +170,7 @@ class FileSplitter
     future<unordered_map<string, int>> fut;
 
 public:
-    FileSplitter(const fs::path path, const unsigned splits, NGramFreqComputer &freqComputer) : path(path),
+    FileSplitter(const fs::path& path, const unsigned splits, NGramFreqComputer &freqComputer) : path(path),
                                                                                                splits(splits),
                                                                                                computer(freqComputer)
     {
@@ -267,6 +281,7 @@ int main(int argc, char *argv[])
 {
     int n = 2;
     unsigned int numThreads = THREADS;
+    bool isNgram = true;
     /* si può passare al programma il numero di thread da avviare, default 4, oopure "hw" per indicare che deve
      * usare un num di thread in base all'hardware del pc (numThread = n° di thread della cpu)
      * si può passare anche n, ovvero la grandezza degli n-grammi da calcolare
@@ -301,7 +316,12 @@ int main(int argc, char *argv[])
                 cerr << "il parametro passato non è un numero valido" << endl;
                 exit(1);
             }
-        } else
+        }
+        else if(token == "-w")
+        {
+            isNgram = false;
+        }
+        else
         {
             cerr << "opzione " << token << " non riconosciuta" << endl;
             exit(2);
@@ -316,7 +336,7 @@ int main(int argc, char *argv[])
     {
         cout << "computing " << n << "-gram with " << numThreads << " threads." << endl;
         fs::create_directory("output");
-        NGramFreqComputer computer(n);
+        NGramFreqComputer computer(n, isNgram);
         vector<FileSplitter> splitters;
         for (const auto &entry: fs::directory_iterator("./analyze"))
         {
