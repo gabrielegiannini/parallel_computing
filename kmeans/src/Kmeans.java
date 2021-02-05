@@ -22,12 +22,7 @@ public class Kmeans {
             F = S;
             S = kmeans(arrayInt, initialMeans);
         } while (different(F, S));
-        for (int f = 0; f < S.length; f++) {
-            for (int number : S[f]) {
-                System.out.print(arrayInt[number] + ", ");
-            }
-            System.out.println(".");
-        }
+        printList(S, arrayInt);
     }
 
     public static List<Integer>[] kmeans(double[] arrayInt, double[] initialMeans) {
@@ -58,5 +53,14 @@ public class Kmeans {
             }
         }
         return no;
+    }
+
+    public static void printList(List<Integer>[] S, double[] arrayInt) {
+        for (int f = 0; f < S.length; f++) {
+            for (int number : S[f]) {
+                System.out.print(arrayInt[number] + ", ");
+            }
+            System.out.println(".");
+        }
     }
 }

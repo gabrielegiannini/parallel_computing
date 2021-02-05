@@ -1,0 +1,28 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Launch Current File",
+            "request": "launch",
+            "mainClass": "${file}"
+        },
+        {
+            "type": "java",
+            "name": "Launch Kmeans",
+            "request": "launch",
+            "mainClass": "Kmeans",
+            "projectName": "kmeans_b3549f8a"
+        },
+        {
+            "type": "java",
+            "name": "Launch KmeansND",
+            "request": "launch",
+            "mainClass": "KmeansND","vmArgs": "-Xms1g -Xmx8g",
+            "projectName": "kmeans_b3549f8a"
+        }
+    ]
+}
