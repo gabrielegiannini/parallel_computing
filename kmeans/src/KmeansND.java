@@ -46,7 +46,9 @@ public class KmeansND {
         double[][] initialMeans = new double[clustersNumber][n];
         Random r = new Random();
         int c = 0;
-        while (c < 10) {
+        double cosimoMin = 0;
+        List<String>[] G = null;
+        while (c < 1000) {
             for (int i = 0; i < initialMeans.length; i++) { // array di dimensione clusterNumber contenente arrays di
                 // dimensione n
                 initialMeans[i] = r.doubles(n).toArray();
@@ -59,10 +61,17 @@ public class KmeansND {
                 F = S;
                 S = kmeans(data, initialMeans, totalNormAvg);
             } while (different(F, S));
-
+            double cosimo2 = 0;
+            for (int cosimo = 0; cosimo < totalNormAvg.length; cosimo++) {
+                cosimo2 = cosimo2 + totalNormAvg[cosimo];
+            }
+            if (cosimoMin < cosimo2) {
+                cosimoMin = cosimo2;
+                G = S;
+            }
             c++;
-            System.out.println(formatTable(S));
         }
+        System.out.println(formatTable(G));
     }
 
     public static List<String>[] kmeans(Map<String, Double[]> data, double[][] initialMeans, double[] totalNormAvg) {
