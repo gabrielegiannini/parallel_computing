@@ -4,3 +4,4 @@ cmake-build*
 output
 ngrams-omp
 ngrams-seq
+out
