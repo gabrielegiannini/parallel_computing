@@ -21,7 +21,7 @@
             "type": "java",
             "name": "Launch KmeansND",
             "request": "launch",
-            "mainClass": "KmeansND","vmArgs": "-Xms1g -Xmx8g", "args": "test_reale.csv 9",
+            "mainClass": "KmeansND","vmArgs": "-Xms1g -Xmx8g", "args": "datasetProva.csv 20",
             "projectName": "kmeans_b3549f8a"
         }
     ]

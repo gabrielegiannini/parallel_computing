@@ -46,7 +46,7 @@ public class KmeansND {
         double[][] initialMeans = new double[clustersNumber][n];
         Random r = new Random();
         int c = 0;
-        double cosimoMin = 0;
+        double cosimoMin = Double.MAX_VALUE;
         List<String>[] G = null;
         while (c < 1000) {
             for (int i = 0; i < initialMeans.length; i++) { // array di dimensione clusterNumber contenente arrays di
@@ -65,7 +65,7 @@ public class KmeansND {
             for (int cosimo = 0; cosimo < totalNormAvg.length; cosimo++) {
                 cosimo2 = cosimo2 + totalNormAvg[cosimo];
             }
-            if (cosimoMin < cosimo2) {
+            if (cosimoMin > cosimo2) {
                 cosimoMin = cosimo2;
                 G = S;
             }
@@ -100,7 +100,9 @@ public class KmeansND {
         }
         // System.out.println("norm calcolata " + cont + " volte");
         for (int i = 0; i < totalNormAvg.length; i++) {
-            totalNormAvg[i] = totalNormAvg[i] / S[i].size();
+            if (S[i].size() > 0) {
+                totalNormAvg[i] = totalNormAvg[i] / S[i].size();
+            }
         }
         return S;
     }
