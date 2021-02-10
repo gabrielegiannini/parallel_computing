@@ -45,34 +45,38 @@ public class KmeansND {
         int clustersNumber = Integer.parseInt(args[1]); // args[0]
         double[][] initialMeans = new double[clustersNumber][n];
         Random r = new Random();
-        for (int i = 0; i < initialMeans.length; i++) { // array di dimensione clusterNumber contenente arrays di
-            // dimensione n
-            initialMeans[i] = r.doubles(n).toArray();
-        }
-        List<String>[] S = kmeans(data, initialMeans);
-        List<String>[] F;
         int c = 0;
-        List<List<String>[]> sList = new ArrayList<>();
         while (c < 10) {
+            for (int i = 0; i < initialMeans.length; i++) { // array di dimensione clusterNumber contenente arrays di
+                // dimensione n
+                initialMeans[i] = r.doubles(n).toArray();
+            }
+            double[] totalNormAvg = new double[initialMeans.length];
+            List<String>[] S = kmeans(data, initialMeans, totalNormAvg);
+            List<String>[] F;
             do {
                 initialMeans = mean(initialMeans, S, data);
                 F = S;
-                S = kmeans(data, initialMeans);
+                S = kmeans(data, initialMeans, totalNormAvg);
             } while (different(F, S));
-            sList.add(S);
+
             c++;
+            System.out.println(formatTable(S));
         }
-        System.out.println(formatTable(S));
     }
 
-    public static List<String>[] kmeans(Map<String, Double[]> data, double[][] initialMeans) {
+    public static List<String>[] kmeans(Map<String, Double[]> data, double[][] initialMeans, double[] totalNormAvg) {
         List<String>[] S = new ArrayList[initialMeans.length];// dimensione clusterNumber
         for (int j = 0; j < S.length; j++) {
             S[j] = new ArrayList<>();
         }
+        for (int h = 0; h < totalNormAvg.length; h++) {
+            totalNormAvg[h] = 0;
+        }
         int cont = 0;
         for (Entry<String, Double[]> entry : data.entrySet()) {
             int posMin = 0;
+
             double min = Double.MAX_VALUE;
             for (int h = 0; h < initialMeans.length; h++) {
                 double norm = norm(entry.getValue(), initialMeans[h]);
@@ -83,8 +87,12 @@ public class KmeansND {
                 }
             }
             S[posMin].add(entry.getKey());
+            totalNormAvg[posMin] = totalNormAvg[posMin] + min;
         }
         // System.out.println("norm calcolata " + cont + " volte");
+        for (int i = 0; i < totalNormAvg.length; i++) {
+            totalNormAvg[i] = totalNormAvg[i] / S[i].size();
+        }
         return S;
     }
 
