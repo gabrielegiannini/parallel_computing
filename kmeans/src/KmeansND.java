@@ -51,11 +51,17 @@ public class KmeansND {
         }
         List<String>[] S = kmeans(data, initialMeans);
         List<String>[] F;
-        do {
-            initialMeans = mean(initialMeans, S, data);
-            F = S;
-            S = kmeans(data, initialMeans);
-        } while (different(F, S));
+        int c = 0;
+        List<List<String>[]> sList = new ArrayList<>();
+        while (c < 10) {
+            do {
+                initialMeans = mean(initialMeans, S, data);
+                F = S;
+                S = kmeans(data, initialMeans);
+            } while (different(F, S));
+            sList.add(S);
+            c++;
+        }
         System.out.println(formatTable(S));
     }
 
@@ -78,7 +84,7 @@ public class KmeansND {
             }
             S[posMin].add(entry.getKey());
         }
-//        System.out.println("norm calcolata " + cont + " volte");
+        // System.out.println("norm calcolata " + cont + " volte");
         return S;
     }
 
