@@ -48,10 +48,30 @@ public class KmeansND {
         int c = 0;
         double cosimoMin = Double.MAX_VALUE;
         List<String>[] G = null;
-        while (c < 1000) {
+        List<Double[]> lt = new ArrayList<>(data.values());
+        while (c < 1) {
+            int last = -1;
             for (int i = 0; i < initialMeans.length; i++) { // array di dimensione clusterNumber contenente arrays di
                 // dimensione n
-                initialMeans[i] = r.doubles(n).toArray();
+//                initialMeans[i] = r.doubles(n).toArray();
+
+                /* ok, pagina di wikipedia, sezione "Initialization methods"...non avevamo capito nulla, ahah
+                Quello che facevamo noi non era un metodo sano per inizializzare i means!
+                Su wiki sono spiegati 2 modi: selezionare k vettori a caso tra i dati perché fungano da centroidi
+                iniziali (è quelo che ho fatto io sotto) oppure dividere casualmente tutti i dati fra i cluster e
+                calcolare i means da questa prima suddivisione casuale (wiki dice che i due metodi sono preferibili in
+                circostanze diverse, consideriamo di implementarli entrambi?)
+                 */
+                int index = r.nextInt(lt.size());
+                while (index == last) {
+                    index = r.nextInt(lt.size());
+                }
+                initialMeans[i] = new double[n];
+                Double[] mean = lt.get(index);
+                for (int j = 0; j < mean.length; j++) {
+                    initialMeans[i][j] = mean[j];
+                }
+                last = index;
             }
             double[] totalNormAvg = new double[initialMeans.length];
             List<String>[] S = kmeans(data, initialMeans, totalNormAvg);
@@ -72,6 +92,11 @@ public class KmeansND {
             c++;
         }
         System.out.println(formatTable(G));
+        // formatTable ogni tanto potrebbe scazzare l'impaginazione (soprattutto per datasetProva.csv cha ha nomi di
+        // una sola lettera) in caso meglio usare printList (però con lui non si vedono bene i cluster di test_reale.csv)
+        // comunque la cosa che ci faceva vedere tutti i cluster in ordine era un errore in format table, che ho più
+        // o meno risotto
+//        printList(G);
     }
 
     public static List<String>[] kmeans(Map<String, Double[]> data, double[][] initialMeans, double[] totalNormAvg) {
@@ -154,22 +179,37 @@ public class KmeansND {
         Formatter form = new Formatter(sb);
         if (o instanceof Object[]) {
             Object[] arr = (Object[]) o;
-            List<Object> lt = Arrays.asList(arr);
-            List<List<String>> content = lt.stream().map(KmeansND::mapsObj).collect(Collectors.toList());
+            List<List<String>> content = new ArrayList<>(arr.length);
+            for (Object e : arr) {
+                content.add(mapsObj(e));
+            }
             for (int i = 0; i < arr.length; i++) {
-                form.format("\t%d\t", i);
+                form.format("\t%d", i);
             }
             sb.append("\n");
             int j = 0;
             boolean next = true;
+            String last = null;
             while (next) {
                 next = false;
                 for (int i = 0; i < arr.length; i++) {
                     List<String> col = content.get(i);
                     if (j < col.size()) {
-                        form.format("\t%s\t", col.get(j));
+                        String elem = col.get(j);
+                        last = elem;
+                        form.format("\t%s", elem);
                         if (j + 1 < col.size()) {
                             next = true;
+                        }
+                    } else {
+                        if (last != null) { // questo aiuta
+                            // ma questa funzione è ancora buggata...pace serve solo a stampare
+                            int offset = last.length() / 8 + 1;
+                            for (int h = 0; h < offset; h++) {
+                                form.format("\t");
+                            }
+                        } else {
+                            form.format("\t\t");
                         }
                     }
                 }
