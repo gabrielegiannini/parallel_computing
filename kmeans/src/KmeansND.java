@@ -3,13 +3,23 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.util.*;
 import java.util.Map.Entry;
-import java.util.stream.Collectors;
 
 public class KmeansND {
     public static void main(String[] args) throws Exception {
+        int c = 0;
+        List<String> positionals = new LinkedList<String>();
+        boolean initRandomClusters = false;
+        while(c < args.length) {
+            if ("-initClusters".equals(args[c])){
+                initRandomClusters = true;
+            } else {
+                positionals.add(args[c]);
+            }
+            c++;
+        }
         BufferedReader csv = null;
         try {
-            csv = new BufferedReader(new FileReader(args[0]));
+            csv = new BufferedReader(new FileReader(positionals.get(0)));
         } catch (FileNotFoundException e) {
             System.err.println("given path does not exists");
             System.exit(1);
@@ -42,17 +52,31 @@ public class KmeansND {
                 vector[i] = vector[i] / domainMax[i]; // normalizza i dati -> tutto è adesso fra 0 e 1
             }
         }
-        int clustersNumber = Integer.parseInt(args[1]); // args[0]
+        int clustersNumber = Integer.parseInt(positionals.get(1)); // args[0]
         double[][] initialMeans = new double[clustersNumber][n];
         Random r = new Random();
-        int c = 0;
-        double cosimoMin = Double.MAX_VALUE;
+        c = 0;
+        double minimunTotal = Double.MAX_VALUE;
         List<String>[] G = null;
         List<Double[]> lt = new ArrayList<>(data.values());
-        while (c < 1) {
-            int last = -1;
-            for (int i = 0; i < initialMeans.length; i++) { // array di dimensione clusterNumber contenente arrays di
-                // dimensione n
+        while (c < 100) {
+            if (initRandomClusters) {
+                G = new List[clustersNumber];
+                List<Integer> assigned = new LinkedList<Integer>();
+                List<String> keys = new ArrayList<>(data.keySet());
+                for (int i = 0 ; i<clustersNumber; i++){
+                    G[i] = new ArrayList<>();
+                    G[i].add(keys.remove(r.nextInt(keys.size())));
+                }
+                // completa gli assegnamenti
+                for(String k : keys){
+                    G[r.nextInt(clustersNumber)].add(k);
+                }
+                mean(initialMeans,G, data); // inizializza initialMeans
+            } else {
+                int last = -1;
+                for (int i = 0; i < initialMeans.length; i++) { // array di dimensione clusterNumber contenente arrays di
+                    // dimensione n
 //                initialMeans[i] = r.doubles(n).toArray();
 
                 /* ok, pagina di wikipedia, sezione "Initialization methods"...non avevamo capito nulla, ahah
@@ -60,33 +84,34 @@ public class KmeansND {
                 Su wiki sono spiegati 2 modi: selezionare k vettori a caso tra i dati perché fungano da centroidi
                 iniziali (è quelo che ho fatto io sotto) oppure dividere casualmente tutti i dati fra i cluster e
                 calcolare i means da questa prima suddivisione casuale (wiki dice che i due metodi sono preferibili in
-                circostanze diverse, consideriamo di implementarli entrambi?)
+                circostanze diverse, consideriamo di implementarli entrambi? PS: implementati entrambi ;) )
                  */
-                int index = r.nextInt(lt.size());
-                while (index == last) {
-                    index = r.nextInt(lt.size());
+                    int index = r.nextInt(lt.size());
+                    while (index == last) {
+                        index = r.nextInt(lt.size());
+                    }
+                    initialMeans[i] = new double[n];
+                    Double[] mean = lt.get(index);
+                    for (int j = 0; j < mean.length; j++) {
+                        initialMeans[i][j] = mean[j];
+                    }
+                    last = index;
                 }
-                initialMeans[i] = new double[n];
-                Double[] mean = lt.get(index);
-                for (int j = 0; j < mean.length; j++) {
-                    initialMeans[i][j] = mean[j];
-                }
-                last = index;
             }
             double[] totalNormAvg = new double[initialMeans.length];
             List<String>[] S = kmeans(data, initialMeans, totalNormAvg);
             List<String>[] F;
             do {
-                initialMeans = mean(initialMeans, S, data);
+                mean(initialMeans, S, data);
                 F = S;
                 S = kmeans(data, initialMeans, totalNormAvg);
             } while (different(F, S));
-            double cosimo2 = 0;
-            for (int cosimo = 0; cosimo < totalNormAvg.length; cosimo++) {
-                cosimo2 = cosimo2 + totalNormAvg[cosimo];
+            double total = 0;
+            for (double avg : totalNormAvg) {
+                total = total + avg;
             }
-            if (cosimoMin > cosimo2) {
-                cosimoMin = cosimo2;
+            if (minimunTotal > total) {
+                minimunTotal = total;
                 G = S;
             }
             c++;
