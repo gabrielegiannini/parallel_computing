@@ -63,7 +63,7 @@ public class Main {
         int clustersNumber = Integer.parseInt(positionals.get(1)); // args[0]
         Random r = new Random();
         c = 0;
-        double minimunTotal = Double.MAX_VALUE;
+//        double minimunTotal = Double.MAX_VALUE;
 //        List<double[]> totalNormAvg = new ArrayList<>();
 //        List<List<String>[]> G = new ArrayList<>();// da controllare le variabili comuni a tutti i thread se ci si
         // accede in modo
@@ -71,14 +71,16 @@ public class Main {
 
         // ptovo con degli array invece che con liste perché almeno sono già lunghi 100 posizioni
 
-        double[][] totalNormAvg = new double[100][];
-        List<String>[][] G = new List[100][];
+//        double[][] totalNormAvg = new double[100][];
+//        List<String>[][] G = new List[100][];
 
+        final int executionsCount = 100;
+        final int threadsCount = 16;
         final boolean finalInitRandomClusters = initRandomClusters;
         final int finalN = n;
         Thread[] threads = new Thread[100];
-        KMeanExecutor pool = new KMeanExecutor(16);
-        while (c < threads.length) {
+        KMeanExecutor pool = new KMeanExecutor(threadsCount);
+        while (c < executionsCount) {
             final int finalC = c;
 //            Thread t = new Thread(() -> {
             pool.schedule(() -> {
@@ -93,13 +95,14 @@ public class Main {
                 } else {
                     algorithm.initMeans();
                 }
-                totalNormAvg[finalC] = algorithm.executeKMeans();
+//                totalNormAvg[finalC] = algorithm.executeKMeans();
+                algorithm.executeKMeans();
 
                 /*
                  * double total = 0; for (double avg : totalNormAvg) { total = total + avg; }
                  */
 
-                G[finalC] = algorithm.getClusters();// prende il nome del thread e ci mette il
+//                G[finalC] = algorithm.getClusters();// prende il nome del thread e ci mette il
                 // nuovo cluster
                 return algorithm;
             });
@@ -114,9 +117,9 @@ public class Main {
 //        pool.shutdown();
 //        pool.awaitTermination(1, TimeUnit.SECONDS);
         double globalAvg = Double.MAX_VALUE;
-        int globalAvgIndex = 0;
+//        int globalAvgIndex = 0;
         List<String>[] FINAL = null;
-        for (int i = 0; i < totalNormAvg.length; i++) {
+        for (int i = 0; i < executionsCount; i++) {
             double avg = 0;
 //            threads[i].join(); // aspetta che abbia finito
             KmeansND task = pool.getNextTerminated();
@@ -126,7 +129,7 @@ public class Main {
             }
             if (avg < globalAvg) {
                 globalAvg = avg;
-                globalAvgIndex = i;
+//                globalAvgIndex = i;
                 FINAL = task.getClusters();
             }
         }
