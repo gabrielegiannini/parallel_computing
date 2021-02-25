@@ -56,7 +56,7 @@ public class KmeansND {
                 totalNormAvg[i] = totalNormAvg[i] / S[i].size();
             }
         }
-//        return S;
+        // return S;
     }
 
     public void means() {
@@ -117,13 +117,16 @@ public class KmeansND {
         for (int i = 0; i < clustersNumber; i++) { // array di dimensione clusterNumber contenente arrays di
             // dimensione n
 
-                /* ok, pagina di wikipedia, sezione "Initialization methods"...non avevamo capito nulla, ahah
-                Quello che facevamo noi non era un metodo sano per inizializzare i means!
-                Su wiki sono spiegati 2 modi: selezionare k vettori a caso tra i dati perché fungano da centroidi
-                iniziali (è quelo che ho fatto io sotto) oppure dividere casualmente tutti i dati fra i cluster e
-                calcolare i means da questa prima suddivisione casuale (wiki dice che i due metodi sono preferibili in
-                circostanze diverse, consideriamo di implementarli entrambi? PS: implementati entrambi ;) )
-                 */
+            /*
+             * ok, pagina di wikipedia, sezione "Initialization methods"...non avevamo
+             * capito nulla, ahah Quello che facevamo noi non era un metodo sano per
+             * inizializzare i means! Su wiki sono spiegati 2 modi: selezionare k vettori a
+             * caso tra i dati perché fungano da centroidi iniziali (è quelo che ho fatto io
+             * sotto) oppure dividere casualmente tutti i dati fra i cluster e calcolare i
+             * means da questa prima suddivisione casuale (wiki dice che i due metodi sono
+             * preferibili in circostanze diverse, consideriamo di implementarli entrambi?
+             * PS: implementati entrambi ;) )
+             */
             int index = r.nextInt(lt.size());
             while (used.contains(index)) {
                 index = r.nextInt(lt.size());
@@ -140,8 +143,9 @@ public class KmeansND {
     public List<String>[] getClusters() {
         return S;
     }
-    
+
     public static void main(String[] args) throws Exception {
+        long startTime = System.nanoTime();
         int c = 0;
         List<String> positionals = new LinkedList<String>();
         boolean initRandomClusters = false;
@@ -215,11 +219,17 @@ public class KmeansND {
             c++;
         }
         System.out.println(formatTable(G));
-        // formatTable ogni tanto potrebbe scazzare l'impaginazione (soprattutto per datasetProva.csv cha ha nomi di
-        // una sola lettera) in caso meglio usare printList (però con lui non si vedono bene i cluster di test_reale.csv)
-        // comunque la cosa che ci faceva vedere tutti i cluster in ordine era un errore in format table, che ho più
+        long endTime = System.nanoTime();
+        long timeElapsed = endTime - startTime;
+        System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);
+        // formatTable ogni tanto potrebbe scazzare l'impaginazione (soprattutto per
+        // datasetProva.csv cha ha nomi di
+        // una sola lettera) in caso meglio usare printList (però con lui non si vedono
+        // bene i cluster di test_reale.csv)
+        // comunque la cosa che ci faceva vedere tutti i cluster in ordine era un errore
+        // in format table, che ho più
         // o meno risotto
-//        printList(G);
+        // printList(G);
     }
 
     public static List<String>[] kmeans(Map<String, Double[]> data, double[][] initialMeans, double[] totalNormAvg) {
