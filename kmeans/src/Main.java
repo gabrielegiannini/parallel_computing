@@ -1,13 +1,12 @@
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
-import java.io.IOException;
 import java.util.*;
-import java.util.Map.Entry;
 
 public class Main {
 
     public static void main(String[] args) throws Exception {
+        long startTime = System.nanoTime();
         int c = 0;
         List<String> positionals = new LinkedList<String>();
         boolean initRandomClusters = false;
@@ -60,17 +59,34 @@ public class Main {
         Random r = new Random();
         c = 0;
         double minimunTotal = Double.MAX_VALUE;
-        List<double[]> totalNormAvg = null;
-        List<List<String>[]> G = null;// da controllare le variabili comuni a tutti i thread se ci si accede in modo
-                                      // giusto, soprattuto G.
+        List<double[]> totalNormAvg = new ArrayList<>();
+        List<List<String>[]> G = new ArrayList<>();// da controllare le variabili comuni a tutti i thread se ci si
+                                                   // accede in modo
+        // giusto, soprattuto G.
         while (c < 100) {
             KmeansND t = new KmeansND(data, clustersNumber, n);
             t.setName(String.valueOf(c));
             t.run(initRandomClusters, totalNormAvg, minimunTotal, G);
+            // System.out.println(t.getName());
             c++;
         }
         // poi qui si confrontano tutti i valori di G e si prende il migliore.
-        System.out.println(formatTable(G));
+        double globalAvg = Double.MAX_VALUE;
+        int globalAvgIndex = 0;
+        for (int i = 0; i < totalNormAvg.size(); i++) {
+            double avg = 0;
+            for (int j = 0; j < totalNormAvg.get(i).length; j++) {
+                avg = avg + totalNormAvg.get(i)[j];
+            }
+            if (avg < globalAvg) {
+                globalAvg = avg;
+                globalAvgIndex = i;
+            }
+        }
+        System.out.println(formatTable(G.get(globalAvgIndex)));
+        long endTime = System.nanoTime();
+        long timeElapsed = endTime - startTime;
+        System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);
         // formatTable ogni tanto potrebbe scazzare l'impaginazione (soprattutto per
         // datasetProva.csv cha ha nomi di
         // una sola lettera) in caso meglio usare printList (però con lui non si vedono
