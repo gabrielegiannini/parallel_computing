@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.Map.Entry;
 
-public class KmeansND extends Thread {
+public class KmeansND {
 
     private final int clustersNumber;
     private Map<String, Double[]> data;
@@ -144,23 +144,23 @@ public class KmeansND extends Thread {
         return S;
     }
 
-    public void run(boolean initRandomClusters, List<double[]> totalNormAvg, double minimunTotal,
-            List<List<String>[]> G) throws IOException {
-        KmeansND algorithm = new KmeansND(data, clustersNumber, n);
-        if (initRandomClusters) {
-            algorithm.initClusters();
-        } else {
-            algorithm.initMeans();
-        }
-        totalNormAvg.add(Integer.parseInt(this.getName()), algorithm.executeKMeans());
-
-        /*
-         * double total = 0; for (double avg : totalNormAvg) { total = total + avg; }
-         */
-
-        G.add(Integer.parseInt(this.getName()), algorithm.getClusters());// prende il nome del thread e ci mette il
-                                                                         // nuovo cluster
-    }
+//    public void run(boolean initRandomClusters, List<double[]> totalNormAvg, double minimunTotal,
+//            List<List<String>[]> G) throws IOException {
+//        KmeansND algorithm = new KmeansND(data, clustersNumber, n);
+//        if (initRandomClusters) {
+//            algorithm.initClusters();
+//        } else {
+//            algorithm.initMeans();
+//        }
+//        totalNormAvg.add(Integer.parseInt(this.getName()), algorithm.executeKMeans());
+//
+//        /*
+//         * double total = 0; for (double avg : totalNormAvg) { total = total + avg; }
+//         */
+//
+//        G.add(Integer.parseInt(this.getName()), algorithm.getClusters());// prende il nome del thread e ci mette il
+//                                                                         // nuovo cluster
+//    }
 
     public static List<String>[] kmeans(Map<String, Double[]> data, double[][] initialMeans, double[] totalNormAvg) {
         List<String>[] S = new ArrayList[initialMeans.length];// dimensione clusterNumber
