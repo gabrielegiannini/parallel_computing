@@ -3,6 +3,10 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class Main {
 
@@ -73,9 +77,11 @@ public class Main {
         final boolean finalInitRandomClusters = initRandomClusters;
         final int finalN = n;
         Thread[] threads = new Thread[100];
+        KMeanExecutor pool = new KMeanExecutor(16);
         while (c < threads.length) {
             final int finalC = c;
-            Thread t = new Thread(() -> {
+//            Thread t = new Thread(() -> {
+            pool.schedule(() -> {
                 KmeansND algorithm = null;
                 try {
                     algorithm = new KmeansND(data, clustersNumber, finalN);
@@ -94,30 +100,38 @@ public class Main {
                  */
 
                 G[finalC] = algorithm.getClusters();// prende il nome del thread e ci mette il
-                                                    // nuovo cluster
+                // nuovo cluster
+                return algorithm;
             });
 //            t.setName(String.valueOf(c));
 //            t.run(initRandomClusters, totalNormAvg, minimunTotal, G);
-            t.start();
-            threads[c] = t;
+//            t.start();
+//            threads[c] = t;
             // System.out.println(t.getName());
             c++;
         }
         // poi qui si confrontano tutti i valori di G e si prende il migliore.
+//        pool.shutdown();
+//        pool.awaitTermination(1, TimeUnit.SECONDS);
         double globalAvg = Double.MAX_VALUE;
         int globalAvgIndex = 0;
+        List<String>[] FINAL = null;
         for (int i = 0; i < totalNormAvg.length; i++) {
             double avg = 0;
-            threads[i].join(); // aspetta che abbia finito
-            for (int j = 0; j < totalNormAvg[i].length; j++) {
-                avg = avg + totalNormAvg[i][j];
+//            threads[i].join(); // aspetta che abbia finito
+            KmeansND task = pool.getNextTerminated();
+            double[] normAvg = task.getTotalNormAvg();
+            for (int j = 0; j < normAvg.length; j++) {
+                avg = avg + normAvg[j];
             }
             if (avg < globalAvg) {
                 globalAvg = avg;
                 globalAvgIndex = i;
+                FINAL = task.getClusters();
             }
         }
-        System.out.println(formatTable(G[globalAvgIndex]));
+//        System.out.println(formatTable(G[globalAvgIndex]));
+        System.out.println(formatTable(FINAL));
         long endTime = System.nanoTime();
         long timeElapsed = endTime - startTime;
         System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);
@@ -129,6 +143,7 @@ public class Main {
         // in format table, che ho più
         // o meno risotto
         // printList(G);
+        pool.shutdown();
     }
 
     public static String formatTable(Object o) {
