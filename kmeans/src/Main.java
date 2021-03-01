@@ -60,12 +60,14 @@ public class Main {
         Random r = new Random();
         c = 0;
         double minimunTotal = Double.MAX_VALUE;
-//        List<double[]> totalNormAvg = new ArrayList<>();
-//        List<List<String>[]> G = new ArrayList<>();// da controllare le variabili comuni a tutti i thread se ci si
+        // List<double[]> totalNormAvg = new ArrayList<>();
+        // List<List<String>[]> G = new ArrayList<>();// da controllare le variabili
+        // comuni a tutti i thread se ci si
         // accede in modo
         // giusto, soprattuto G.
 
-        // ptovo con degli array invece che con liste perché almeno sono già lunghi 100 posizioni
+        // ptovo con degli array invece che con liste perché almeno sono già lunghi 100
+        // posizioni
 
         double[][] totalNormAvg = new double[100][];
         List<String>[][] G = new List[100][];
@@ -96,8 +98,8 @@ public class Main {
                 G[finalC] = algorithm.getClusters();// prende il nome del thread e ci mette il
                                                     // nuovo cluster
             });
-//            t.setName(String.valueOf(c));
-//            t.run(initRandomClusters, totalNormAvg, minimunTotal, G);
+            // t.setName(String.valueOf(c));
+            // t.run(initRandomClusters, totalNormAvg, minimunTotal, G);
             t.start();
             threads[c] = t;
             // System.out.println(t.getName());
