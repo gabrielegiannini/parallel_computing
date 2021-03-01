@@ -30,6 +30,7 @@ public class KMeanExecutor {
         result = results.parallelStream().filter(f -> f.isDone()).findAny();
         if (result.isPresent()) {
             try {
+                results.remove(result);
                 return result.get().get();
             } catch (InterruptedException e) {
                 e.printStackTrace();

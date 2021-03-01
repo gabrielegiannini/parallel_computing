@@ -74,7 +74,7 @@ public class Main {
 //        double[][] totalNormAvg = new double[100][];
 //        List<String>[][] G = new List[100][];
 
-        final int executionsCount = 100;
+        final int executionsCount = 100000;
         final int threadsCount = 16;
         final boolean finalInitRandomClusters = initRandomClusters;
         final int finalN = n;
@@ -135,6 +135,7 @@ public class Main {
         }
 //        System.out.println(formatTable(G[globalAvgIndex]));
         System.out.println(formatTable(FINAL));
+        pool.shutdown();
         long endTime = System.nanoTime();
         long timeElapsed = endTime - startTime;
         System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);
@@ -146,7 +147,6 @@ public class Main {
         // in format table, che ho più
         // o meno risotto
         // printList(G);
-        pool.shutdown();
     }
 
     public static String formatTable(Object o) {
