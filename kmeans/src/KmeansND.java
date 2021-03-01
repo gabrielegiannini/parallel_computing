@@ -144,23 +144,26 @@ public class KmeansND {
         return S;
     }
 
-//    public void run(boolean initRandomClusters, List<double[]> totalNormAvg, double minimunTotal,
-//            List<List<String>[]> G) throws IOException {
-//        KmeansND algorithm = new KmeansND(data, clustersNumber, n);
-//        if (initRandomClusters) {
-//            algorithm.initClusters();
-//        } else {
-//            algorithm.initMeans();
-//        }
-//        totalNormAvg.add(Integer.parseInt(this.getName()), algorithm.executeKMeans());
-//
-//        /*
-//         * double total = 0; for (double avg : totalNormAvg) { total = total + avg; }
-//         */
-//
-//        G.add(Integer.parseInt(this.getName()), algorithm.getClusters());// prende il nome del thread e ci mette il
-//                                                                         // nuovo cluster
-//    }
+    // public void run(boolean initRandomClusters, List<double[]> totalNormAvg,
+    // double minimunTotal,
+    // List<List<String>[]> G) throws IOException {
+    // KmeansND algorithm = new KmeansND(data, clustersNumber, n);
+    // if (initRandomClusters) {
+    // algorithm.initClusters();
+    // } else {
+    // algorithm.initMeans();
+    // }
+    // totalNormAvg.add(Integer.parseInt(this.getName()),
+    // algorithm.executeKMeans());
+    //
+    // /*
+    // * double total = 0; for (double avg : totalNormAvg) { total = total + avg; }
+    // */
+    //
+    // G.add(Integer.parseInt(this.getName()), algorithm.getClusters());// prende il
+    // nome del thread e ci mette il
+    // // nuovo cluster
+    // }
 
     public static List<String>[] kmeans(Map<String, Double[]> data, double[][] initialMeans, double[] totalNormAvg) {
         List<String>[] S = new ArrayList[initialMeans.length];// dimensione clusterNumber
