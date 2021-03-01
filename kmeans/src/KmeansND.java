@@ -199,7 +199,7 @@ public class KmeansND {
         c = 0;
         double minimunTotal = Double.MAX_VALUE;
         List<String>[] G = null;
-        while (c < 100) {
+        while (c < 10000) {
             KmeansND algorithm = new KmeansND(data, clustersNumber, n);
             if (initRandomClusters) {
                 algorithm.initClusters();
