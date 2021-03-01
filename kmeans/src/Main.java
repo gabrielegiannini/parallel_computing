@@ -69,10 +69,10 @@ public class Main {
         // ptovo con degli array invece che con liste perché almeno sono già lunghi 100
         // posizioni
 
-        double[][] totalNormAvg = new double[100][];
+        double[][] totalNormAvg = new double[1000][];
         double[][] totalNormAvgR = new double[100][];
         List<String>[][] G = new List[100][];
-        List<String>[][] F = new List[100][];
+        List<String>[][] F = new List[1000][];
 
         final boolean finalInitRandomClusters = initRandomClusters;
         final int finalN = n;
@@ -84,7 +84,7 @@ public class Main {
                 KmeansND algorithm = null;
                 double globalAvg = Double.MAX_VALUE;
                 int globalAvgIndex = 0;
-                while (a < 100) {
+                while (a < 1000) {
                     algorithm = null;
                     try {
                         algorithm = new KmeansND(data, clustersNumber, finalN);
@@ -128,11 +128,11 @@ public class Main {
         // poi qui si confrontano tutti i valori di G e si prende il migliore.
         double globalAvg = Double.MAX_VALUE;
         int globalAvgIndex = 0;
-        for (int i = 0; i < totalNormAvg.length; i++) {
+        for (int i = 0; i < totalNormAvgR.length; i++) {
             double avg = 0;
             threads[i].join(); // aspetta che abbia finito
-            for (int j = 0; j < totalNormAvg[i].length; j++) {
-                avg = avg + totalNormAvg[i][j];
+            for (int j = 0; j < totalNormAvgR[i].length; j++) {
+                avg = avg + totalNormAvgR[i][j];
             }
             if (avg < globalAvg) {
                 globalAvg = avg;
