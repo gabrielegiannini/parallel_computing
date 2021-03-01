@@ -70,7 +70,9 @@ public class Main {
         // posizioni
 
         double[][] totalNormAvg = new double[100][];
+        double[][] totalNormAvgR = new double[100][];
         List<String>[][] G = new List[100][];
+        List<String>[][] F = new List[100][];
 
         final boolean finalInitRandomClusters = initRandomClusters;
         final int finalN = n;
@@ -78,25 +80,43 @@ public class Main {
         while (c < threads.length) {
             final int finalC = c;
             Thread t = new Thread(() -> {
+                int a = 0;
                 KmeansND algorithm = null;
-                try {
-                    algorithm = new KmeansND(data, clustersNumber, finalN);
-                } catch (IOException e) {
-                    e.printStackTrace();
+                double globalAvg = Double.MAX_VALUE;
+                int globalAvgIndex = 0;
+                while (a < 100) {
+                    algorithm = null;
+                    try {
+                        algorithm = new KmeansND(data, clustersNumber, finalN);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    if (finalInitRandomClusters) {
+                        algorithm.initClusters();
+                    } else {
+                        algorithm.initMeans();
+                    }
+                    totalNormAvg[a] = algorithm.executeKMeans();
+                    F[a] = algorithm.getClusters();
+                    /*
+                     * double total = 0; for (double avg : totalNormAvg) { total = total + avg; }
+                     */
+                    a++;
                 }
-                if (finalInitRandomClusters) {
-                    algorithm.initClusters();
-                } else {
-                    algorithm.initMeans();
+
+                for (int i = 0; i < totalNormAvg.length; i++) {
+                    double avg = 0;
+                    for (int j = 0; j < totalNormAvg[i].length; j++) {
+                        avg = avg + totalNormAvg[i][j];
+                    }
+                    if (avg < globalAvg) {
+                        globalAvg = avg;
+                        globalAvgIndex = i;
+                    }
                 }
-                totalNormAvg[finalC] = algorithm.executeKMeans();
-
-                /*
-                 * double total = 0; for (double avg : totalNormAvg) { total = total + avg; }
-                 */
-
-                G[finalC] = algorithm.getClusters();// prende il nome del thread e ci mette il
-                                                    // nuovo cluster
+                totalNormAvgR[finalC] = totalNormAvg[globalAvgIndex];
+                G[finalC] = F[globalAvgIndex];// prende il nome del thread e ci mette il
+                // nuovo cluster
             });
             // t.setName(String.valueOf(c));
             // t.run(initRandomClusters, totalNormAvg, minimunTotal, G);
