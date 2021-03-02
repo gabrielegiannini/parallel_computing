@@ -35,14 +35,12 @@ public class Kmeans {
         for (int h = 0; h < totalNormAvg.length; h++) {
             totalNormAvg[h] = 0;
         }
-        int cont = 0;
         for (Entry<String, Double[]> entry : data.entrySet()) {
             int posMin = 0;
 
             double min = Double.MAX_VALUE;
             for (int h = 0; h < means.length; h++) {
                 double norm = norm(entry.getValue(), means[h]);
-                cont++;
                 if (norm < min) {
                     min = norm;
                     posMin = h;
@@ -56,7 +54,6 @@ public class Kmeans {
                 totalNormAvg[i] = totalNormAvg[i] / S[i].size();
             }
         }
-        // return S;
     }
 
     public void means() {
@@ -218,151 +215,10 @@ public class Kmeans {
             }
             c++;
         }
-        System.out.println(formatTable(G));
+        System.out.println(Main.formatTable(G));
         long endTime = System.nanoTime();
         long timeElapsed = endTime - startTime;
         System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);
-        // formatTable ogni tanto potrebbe scazzare l'impaginazione (soprattutto per
-        // datasetProva.csv cha ha nomi di
-        // una sola lettera) in caso meglio usare printList (però con lui non si vedono
-        // bene i cluster di test_reale.csv)
-        // comunque la cosa che ci faceva vedere tutti i cluster in ordine era un errore
-        // in format table, che ho più
-        // o meno risotto
-        // printList(G);
-    }
-
-    public static List<String>[] kmeans(Map<String, Double[]> data, double[][] initialMeans, double[] totalNormAvg) {
-        List<String>[] S = new ArrayList[initialMeans.length];// dimensione clusterNumber
-        for (int j = 0; j < S.length; j++) {
-            S[j] = new ArrayList<>();
-        }
-        for (int h = 0; h < totalNormAvg.length; h++) {
-            totalNormAvg[h] = 0;
-        }
-        int cont = 0;
-        for (Entry<String, Double[]> entry : data.entrySet()) {
-            int posMin = 0;
-
-            double min = Double.MAX_VALUE;
-            for (int h = 0; h < initialMeans.length; h++) {
-                double norm = norm(entry.getValue(), initialMeans[h]);
-                cont++;
-                if (norm < min) {
-                    min = norm;
-                    posMin = h;
-                }
-            }
-            S[posMin].add(entry.getKey());
-            totalNormAvg[posMin] = totalNormAvg[posMin] + min;
-        }
-        // System.out.println("norm calcolata " + cont + " volte");
-        for (int i = 0; i < totalNormAvg.length; i++) {
-            if (S[i].size() > 0) {
-                totalNormAvg[i] = totalNormAvg[i] / S[i].size();
-            }
-        }
-        return S;
-    }
-
-    public static boolean different(List<String>[] F, List<String>[] S) {
-        boolean no = false;
-        for (int i = 0; i < F.length; i++) {
-            if (!F[i].equals(S[i])) {
-                no = true;
-                break;
-            }
-        }
-        return no;
-    }
-
-    public static void printList(Iterable<String>[] S) {
-        for (Iterable<String> strings : S) {
-            for (String key : strings) {
-                System.out.print(key + ", ");
-            }
-            System.out.println(".");
-        }
-    }
-
-    public static void printAnyThing(Object S) {
-        if (S instanceof Object[]) {
-            Object[] oArr = (Object[]) S;
-            for (Object o : oArr) {
-                printAnyThing(o);
-                System.out.print(",");
-            }
-            System.out.println(".");
-            System.out.println();
-        } else if (S instanceof Iterable) {
-            Iterable<Object> oIter = (Iterable<Object>) S;
-            for (Object o : oIter) {
-                printAnyThing(o);
-                System.out.print(",");
-            }
-            System.out.println(".");
-            System.out.println();
-        } else {
-            System.out.print(S.toString());
-        }
-    }
-
-    public static String formatTable(Object o) {
-        StringBuilder sb = new StringBuilder();
-        Formatter form = new Formatter(sb);
-        if (o instanceof Object[]) {
-            Object[] arr = (Object[]) o;
-            List<List<String>> content = new ArrayList<>(arr.length);
-            for (Object e : arr) {
-                content.add(mapsObj(e));
-            }
-            for (int i = 0; i < arr.length; i++) {
-                form.format("\t%d", i);
-            }
-            sb.append("\n");
-            int j = 0;
-            boolean next = true;
-            String last = null;
-            while (next) {
-                next = false;
-                for (int i = 0; i < arr.length; i++) {
-                    List<String> col = content.get(i);
-                    if (j < col.size()) {
-                        String elem = col.get(j);
-                        last = elem;
-                        form.format("\t%s", elem);
-                        if (j + 1 < col.size()) {
-                            next = true;
-                        }
-                    } else {
-                        if (last != null) { // questo aiuta
-                            // ma questa funzione è ancora buggata...pace serve solo a stampare
-                            int offset = last.length() / 8 + 1;
-                            for (int h = 0; h < offset; h++) {
-                                form.format("\t");
-                            }
-                        } else {
-                            form.format("\t\t");
-                        }
-                    }
-                }
-                sb.append("\n");
-                j++;
-            }
-            sb.append("\n");
-        }
-        return sb.toString();
-    }
-
-    public static List<String> mapsObj(Object o) {
-        List<String> lt = new LinkedList<>();
-        if (o instanceof Iterable) {
-            Iterable<Object> it = (Iterable<Object>) o;
-            for (Object e : it) {
-                lt.add(e.toString());
-            }
-        }
-        return lt;
     }
 
     public static double norm(Double[] a, double[] b) {
@@ -371,18 +227,5 @@ public class Kmeans {
             res = res + Math.pow(a[i] - b[i], 2);
         }
         return res;
-    }
-
-    public static double[][] mean(double[][] initialMeans, List<String>[] S, Map<String, Double[]> data) {
-        for (int i = 0; i < initialMeans.length; i++) {
-            for (int j = 0; j < initialMeans[i].length; j++) {
-                initialMeans[i][j] = 0;
-                for (String key : S[i]) {
-                    initialMeans[i][j] = initialMeans[i][j] + data.get(key)[j];
-                }
-                initialMeans[i][j] = initialMeans[i][j] / S[i].size();
-            }
-        }
-        return initialMeans;
     }
 }

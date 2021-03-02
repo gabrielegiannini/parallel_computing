@@ -60,14 +60,6 @@ public class Main {
         Random r = new Random();
         c = 0;
         double minimunTotal = Double.MAX_VALUE;
-        // List<double[]> totalNormAvg = new ArrayList<>();
-        // List<List<String>[]> G = new ArrayList<>();// da controllare le variabili
-        // comuni a tutti i thread se ci si
-        // accede in modo
-        // giusto, soprattuto G.
-
-        // ptovo con degli array invece che con liste perché almeno sono già lunghi 100
-        // posizioni
 
         double[][] totalNormAvg = new double[1000][];
         double[][] totalNormAvgR = new double[100][];
@@ -81,13 +73,13 @@ public class Main {
             final int finalC = c;
             Thread t = new Thread(() -> {
                 int a = 0;
-                KmeansND algorithm = null;
+                Kmeans algorithm = null;
                 double globalAvg = Double.MAX_VALUE;
                 int globalAvgIndex = 0;
                 while (a < 1000) {
                     algorithm = null;
                     try {
-                        algorithm = new KmeansND(data, clustersNumber, finalN);
+                        algorithm = new Kmeans(data, clustersNumber, finalN);
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -98,9 +90,6 @@ public class Main {
                     }
                     totalNormAvg[a] = algorithm.executeKMeans();
                     F[a] = algorithm.getClusters();
-                    /*
-                     * double total = 0; for (double avg : totalNormAvg) { total = total + avg; }
-                     */
                     a++;
                 }
 
@@ -118,11 +107,8 @@ public class Main {
                 G[finalC] = F[globalAvgIndex];// prende il nome del thread e ci mette il
                 // nuovo cluster
             });
-            // t.setName(String.valueOf(c));
-            // t.run(initRandomClusters, totalNormAvg, minimunTotal, G);
             t.start();
             threads[c] = t;
-            // System.out.println(t.getName());
             c++;
         }
         // poi qui si confrontano tutti i valori di G e si prende il migliore.
@@ -143,14 +129,6 @@ public class Main {
         long endTime = System.nanoTime();
         long timeElapsed = endTime - startTime;
         System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);
-        // formatTable ogni tanto potrebbe scazzare l'impaginazione (soprattutto per
-        // datasetProva.csv cha ha nomi di
-        // una sola lettera) in caso meglio usare printList (però con lui non si vedono
-        // bene i cluster di test_reale.csv)
-        // comunque la cosa che ci faceva vedere tutti i cluster in ordine era un errore
-        // in format table, che ho più
-        // o meno risotto
-        // printList(G);
     }
 
     public static String formatTable(Object o) {
@@ -211,4 +189,12 @@ public class Main {
         return lt;
     }
 
+    public static void printList(Iterable<String>[] S) {
+        for (Iterable<String> strings : S) {
+            for (String key : strings) {
+                System.out.print(key + ", ");
+            }
+            System.out.println(".");
+        }
+    }
 }

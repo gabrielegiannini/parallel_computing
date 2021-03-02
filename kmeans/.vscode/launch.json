@@ -19,14 +19,16 @@
         },
         {
             "type": "java",
-            "name": "Launch Kmeans",
+            "name": "Launch Kmeans Sequential",
             "request": "launch",
             "mainClass": "Kmeans",
+            "vmArgs": "-Xms1g -Xmx8g",
+            "args": "datasetProva.csv 20",
             "projectName": "kmeans_b3549f8a"
         },
         {
             "type": "java",
-            "name": "Launch KmeansND",
+            "name": "Launch Kmeans Thread",
             "request": "launch",
             "mainClass": "Main",
             "vmArgs": "-Xms1g -Xmx8g",
