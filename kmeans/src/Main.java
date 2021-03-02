@@ -10,6 +10,7 @@ public class Main {
         long startTime = System.nanoTime();
         int c = 0;
         List<String> positionals = new LinkedList<String>();
+
         boolean initRandomClusters = false;
         while (c < args.length) {
             if ("-initClusters".equals(args[c])) {
