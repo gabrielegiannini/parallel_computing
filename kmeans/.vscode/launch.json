@@ -15,7 +15,8 @@
             "type": "java",
             "name": "Launch Current File",
             "request": "launch",
-            "mainClass": "${file}"
+            "mainClass": "${file}",
+            "args": "datasetProva.csv 20",
         },
         {
             "type": "java",
@@ -24,7 +25,7 @@
             "mainClass": "Kmeans",
             "vmArgs": "-Xms1g -Xmx8g",
             "args": "datasetProva.csv 20",
-            "projectName": "kmeans_b3549f8a"
+            //"projectName": "kmeans_b3549f8a"
         },
         {
             "type": "java",
@@ -33,7 +34,21 @@
             "mainClass": "Main",
             "vmArgs": "-Xms1g -Xmx8g",
             "args": "datasetProva.csv 20",
-            "projectName": "kmeans_b3549f8a"
+            //"projectName": "kmeans_b3549f8a"
+        },
+        {
+            "type": "java",
+            "name": "Launch Current with \"datasetProva.csv\" but ask clusters",
+            "request": "launch",
+            "mainClass": "${file}",
+            "args": "datasetProva.csv ${command:SpecifyProgramArgs}"
+        },
+        {
+            "type": "java",
+            "name": "Launch Current with \"test_reale.csv\" but ask clusters",
+            "request": "launch",
+            "mainClass": "${file}",
+            "args": "test_reale.csv ${command:SpecifyProgramArgs}"
         }
     ]
 }
