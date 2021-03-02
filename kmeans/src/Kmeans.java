@@ -143,60 +143,16 @@ public class Kmeans {
 
     public static void main(String[] args) throws Exception {
         long startTime = System.nanoTime();
-        int c = 0;
         List<String> positionals = new LinkedList<String>();
-        boolean initRandomClusters = false;
-        while (c < args.length) {
-            if ("-initClusters".equals(args[c])) {
-                initRandomClusters = true;
-            } else {
-                positionals.add(args[c]);
-            }
-            c++;
-        }
-        BufferedReader csv = null;
-        try {
-            csv = new BufferedReader(new FileReader(positionals.get(0)));
-        } catch (FileNotFoundException e) {
-            System.err.println("given path does not exists");
-            System.exit(1);
-        }
 
-        String row = csv.readLine();
+        boolean initRandomClusters = Common.extractArguments(args, positionals);
         HashMap<String, Double[]> data = new HashMap<>();
-        double[] domainMax = null;
-        int n = -1;
-        while (row != null) {
-            String[] rowArr = row.split(";");
-            if (n == -1) {
-                n = rowArr.length - 1;
-                domainMax = new double[n];
-                for (int i = 0; i < n; i++) {
-                    domainMax[i] = Double.MIN_VALUE;
-                }
-            }
-            Double[] dataArr = new Double[n];
-            for (int i = 1; i < rowArr.length; i++) {
-                dataArr[i - 1] = Double.parseDouble(rowArr[i]);
-                if (dataArr[i - 1] > domainMax[i - 1]) {
-                    domainMax[i - 1] = dataArr[i - 1];
-                }
-            }
-            data.put(rowArr[0], dataArr);
-            row = csv.readLine();
-        }
-        for (Double[] vector : data.values()) {
-            for (int i = 0; i < n; i++) {
-                vector[i] = vector[i] / domainMax[i]; // normalizza i dati -> tutto è adesso fra 0 e 1
-            }
-        }
-
+        int n = Common.populateData(positionals, data);
         int clustersNumber = Integer.parseInt(positionals.get(1)); // args[0]
-        Random r = new Random();
-        c = 0;
         double minimunTotal = Double.MAX_VALUE;
         List<String>[] G = null;
-        while (c < 100000) {
+        int c = 0;
+        while (c < Common.EXECUTIONS_COUNT) {
             Kmeans algorithm = new Kmeans(data, clustersNumber, n);
             if (initRandomClusters) {
                 algorithm.initClusters();
@@ -215,7 +171,7 @@ public class Kmeans {
             }
             c++;
         }
-        System.out.println(Main.formatTable(G));
+        System.out.println(Common.formatTable(G));
         long endTime = System.nanoTime();
         long timeElapsed = endTime - startTime;
         System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);

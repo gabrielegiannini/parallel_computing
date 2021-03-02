@@ -20,6 +20,13 @@
         },
         {
             "type": "java",
+            "name": "Launch Current File with \"test_reale.csv\"",
+            "request": "launch",
+            "mainClass": "${file}",
+            "args": "test_reale.csv 20",
+        },
+        {
+            "type": "java",
             "name": "Launch Kmeans Sequential",
             "request": "launch",
             "mainClass": "Kmeans",
@@ -31,7 +38,16 @@
             "type": "java",
             "name": "Launch Kmeans Thread",
             "request": "launch",
-            "mainClass": "Main",
+            "mainClass": "MainWithThreads",
+            "vmArgs": "-Xms1g -Xmx8g",
+            "args": "datasetProva.csv 20",
+            //"projectName": "kmeans_b3549f8a"
+        },
+        {
+            "type": "java",
+            "name": "Launch Kmeans ThreadPool",
+            "request": "launch",
+            "mainClass": "MainWithPool",
             "vmArgs": "-Xms1g -Xmx8g",
             "args": "datasetProva.csv 20",
             //"projectName": "kmeans_b3549f8a"

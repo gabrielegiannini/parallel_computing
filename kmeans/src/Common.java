@@ -4,13 +4,24 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
 
-public class Main {
+public class Common {
+    public static final int THREAD_COUNT = 16;
+    public static final int EXECUTIONS_COUNT = 10000;
 
-    public static void main(String[] args) throws Exception {
-        long startTime = System.nanoTime();
+    static int populateData(List<String> positionals, HashMap<String, Double[]> data) throws IOException {
+        BufferedReader csv = null;
+        try {
+            csv = new BufferedReader(new FileReader(positionals.get(0)));
+        } catch (FileNotFoundException e) {
+            System.err.println("given path does not exists");
+            System.exit(1);
+        }
+        int n = parseData(csv, data);
+        return n;
+    }
+
+    static boolean extractArguments(String[] args, List<String> positionals) {
         int c = 0;
-        List<String> positionals = new LinkedList<String>();
-
         boolean initRandomClusters = false;
         while (c < args.length) {
             if ("-initClusters".equals(args[c])) {
@@ -20,16 +31,11 @@ public class Main {
             }
             c++;
         }
-        BufferedReader csv = null;
-        try {
-            csv = new BufferedReader(new FileReader(positionals.get(0)));
-        } catch (FileNotFoundException e) {
-            System.err.println("given path does not exists");
-            System.exit(1);
-        }
+        return initRandomClusters;
+    }
 
+    private static int parseData(BufferedReader csv, HashMap<String, Double[]> data) throws IOException {
         String row = csv.readLine();
-        HashMap<String, Double[]> data = new HashMap<>();
         double[] domainMax = null;
         int n = -1;
         while (row != null) {
@@ -56,80 +62,7 @@ public class Main {
                 vector[i] = vector[i] / domainMax[i]; // normalizza i dati -> tutto è adesso fra 0 e 1
             }
         }
-
-        int clustersNumber = Integer.parseInt(positionals.get(1)); // args[0]
-        Random r = new Random();
-        c = 0;
-        double minimunTotal = Double.MAX_VALUE;
-
-        double[][] totalNormAvg = new double[1000][];
-        double[][] totalNormAvgR = new double[100][];
-        List<String>[][] G = new List[100][];
-        List<String>[][] F = new List[1000][];
-
-        final boolean finalInitRandomClusters = initRandomClusters;
-        final int finalN = n;
-        Thread[] threads = new Thread[100];
-        while (c < threads.length) {
-            final int finalC = c;
-            Thread t = new Thread(() -> {
-                int a = 0;
-                Kmeans algorithm = null;
-                double globalAvg = Double.MAX_VALUE;
-                int globalAvgIndex = 0;
-                while (a < 1000) {
-                    algorithm = null;
-                    try {
-                        algorithm = new Kmeans(data, clustersNumber, finalN);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                    if (finalInitRandomClusters) {
-                        algorithm.initClusters();
-                    } else {
-                        algorithm.initMeans();
-                    }
-                    totalNormAvg[a] = algorithm.executeKMeans();
-                    F[a] = algorithm.getClusters();
-                    a++;
-                }
-
-                for (int i = 0; i < totalNormAvg.length; i++) {
-                    double avg = 0;
-                    for (int j = 0; j < totalNormAvg[i].length; j++) {
-                        avg = avg + totalNormAvg[i][j];
-                    }
-                    if (avg < globalAvg) {
-                        globalAvg = avg;
-                        globalAvgIndex = i;
-                    }
-                }
-                totalNormAvgR[finalC] = totalNormAvg[globalAvgIndex];
-                G[finalC] = F[globalAvgIndex];// prende il nome del thread e ci mette il
-                // nuovo cluster
-            });
-            t.start();
-            threads[c] = t;
-            c++;
-        }
-        // poi qui si confrontano tutti i valori di G e si prende il migliore.
-        double globalAvg = Double.MAX_VALUE;
-        int globalAvgIndex = 0;
-        for (int i = 0; i < totalNormAvgR.length; i++) {
-            double avg = 0;
-            threads[i].join(); // aspetta che abbia finito
-            for (int j = 0; j < totalNormAvgR[i].length; j++) {
-                avg = avg + totalNormAvgR[i][j];
-            }
-            if (avg < globalAvg) {
-                globalAvg = avg;
-                globalAvgIndex = i;
-            }
-        }
-        System.out.println(formatTable(G[globalAvgIndex]));
-        long endTime = System.nanoTime();
-        long timeElapsed = endTime - startTime;
-        System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);
+        return n;
     }
 
     public static String formatTable(Object o) {
