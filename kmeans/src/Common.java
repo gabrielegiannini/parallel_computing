@@ -8,7 +8,7 @@ public class Common {
     public static final int THREAD_COUNT = 16;
     public static final int EXECUTIONS_COUNT = 10000;
 
-    static int populateData(List<String> positionals, HashMap<String, Double[]> data) throws IOException {
+    static int populateData(List<String> positionals, HashMap<String, Double[]> data) throws IOException {//lettura del file per creare il set di dati da utilizzare
         BufferedReader csv = null;
         try {
             csv = new BufferedReader(new FileReader(positionals.get(0)));
@@ -20,7 +20,7 @@ public class Common {
         return n;
     }
 
-    static boolean extractArguments(String[] args, List<String> positionals) {
+    static boolean extractArguments(String[] args, List<String> positionals) {//gestire il flag -initClusters
         int c = 0;
         boolean initRandomClusters = false;
         while (c < args.length) {

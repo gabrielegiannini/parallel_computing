@@ -19,7 +19,7 @@ public class Kmeans {
         return totalNormAvg;
     }
 
-    public Kmeans(final Map<String, Double[]> data, int clustersNumber, final int n) throws IOException {
+    public Kmeans(final Map<String, Double[]> data, int clustersNumber, final int n) throws IOException {//costruttore 
         this.data = data;
         this.n = n;
         means = new double[clustersNumber][n];
@@ -28,11 +28,11 @@ public class Kmeans {
     }
 
     public void kmean() {
-        S = new ArrayList[means.length];// dimensione clusterNumber
+        S = new ArrayList[means.length];// dimensione clusterNumber. S e' array list di array list
         for (int j = 0; j < S.length; j++) {
             S[j] = new ArrayList<>();
         }
-        for (int h = 0; h < totalNormAvg.length; h++) {
+        for (int h = 0; h < totalNormAvg.length; h++) {// array delle norme 
             totalNormAvg[h] = 0;
         }
         for (Entry<String, Double[]> entry : data.entrySet()) {
@@ -56,7 +56,7 @@ public class Kmeans {
         }
     }
 
-    public void means() {
+    public void means() {//calcola centroidi
         for (int i = 0; i < means.length; i++) {
             for (int j = 0; j < means[i].length; j++) {
                 means[i][j] = 0;
