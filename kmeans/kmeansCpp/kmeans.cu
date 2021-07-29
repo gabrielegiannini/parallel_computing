@@ -56,39 +56,57 @@ __global__ void meanz(double means[], double S[], int dimS[], int * elemLengthPt
     means[blockIdx.x *elemLength + threadIdx.x] = means[blockIdx.x *elemLength + threadIdx.x] / dimS[blockIdx.x];
 }
 
-/*int parseData(ifstream csv, vector<double> data) {
-        double domainMax[];
-        int n = -1;
+unsigned long parseData(ifstream &csv, vector<double> &data) {
+        double *domainMax;
+        unsigned long n = -1;
         int index = 0;
         while (!csv.eof()) {
-            string row = getLine(csv);
-            string rowArr[];
-            rowArr = row.split(";");
+            string row;
+            getline(csv, row);
+            cout << row << endl;
+            istringstream iss(row);
+            // perche ovviamente in c++ string.split() non esiste...
+            vector<string> rowArr;
+            const char delimiter = ';';
+            // evita il primo token, tanto è il nome del primo vettore
+            int start = row.find(delimiter) + 1;
+            int end = row.find(delimiter, start);
+            while (end != -1) {
+                rowArr.push_back(row.substr(start, end - start));
+                start = end + 1; // scansa il ';'
+                end = row.find(delimiter, start);
+            }
+            rowArr.push_back(row.substr(start));
+
             if (n == -1) {
-                //n = rowArr.length - 1;
-                n = *(&rowArr + 1) - rowArr - 1;
+                n = rowArr.size();
                 domainMax = new double[n];
                 for (int i = 0; i < n; i++) {
                     domainMax[i] = std::numeric_limits<double>::lowest();
                 }
             }
-            for (int i = 0; i < n; i++) {
-                data[index] = stod(rowArr[i]);
-                if (data[index] > domainMax[i - 1]) {
-                    domainMax[i - 1] = data[index];
+            if (n == rowArr.size())
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    data.push_back(stod(rowArr[i]));
+                    if (data[index] > domainMax[i])
+                    {
+                        domainMax[i] = data[index];
+                    }
+                    index++;
                 }
-                index++;
             }
         }
         for(int j=0; j<data.size(); j++) {
             data[j] = data[j] / domainMax[j%n]; // normalizza i dati -> tutto è adesso fra 0 e 1
         }
         return n;
-    }*/
+    }
 
 int main(){
     double *a, *b, *out;
-    double *d_a, *d_b, *d_out; 
+    double *d_a, *d_b, *d_out;
     double *res;
     double *sum;
     double *means;
@@ -97,15 +115,17 @@ int main(){
     int *elemLength;
     double *data_d;
 
-    vector<double> dataVec();
+    vector<double> dataVec(0);
     string s;
     ifstream myfile;
-    myfile.open("../datasetProva.csv");
-    //int n = parseData(myfile);
+    myfile.open("../../datasetProva.csv");
+    unsigned long n = parseData(myfile, dataVec);
     myfile.close();
-    //double data[dataVec.size()];
-    //std::copy(dataVec.begin(), dataVec.end(), data);
+    double data[dataVec.size()];
+    std::copy(dataVec.begin(), dataVec.end(), data);
     //printf(dataVec.size());
+    cout << "n = " << n << "\n";
+    cout << "Data size: " << dataVec.size() << endl;
 
     // Allocate host memory
     a   = (double*)malloc(sizeof(double) * N);
@@ -137,12 +157,12 @@ int main(){
     cudaMemcpy(d_b, b, sizeof(double) * N, cudaMemcpyHostToDevice);
 
     // Executing kernel 
-    normA<<<2,5>>>(d_a, d_b, res, 5, sum);
+    normA<<<CLUSTER_NUMBER,5>>>(d_a, d_b, res, 5, sum);
 
     cudaDeviceSynchronize();
 
     meanz<<<CLUSTER_NUMBER, 5>>>(means, S, dimS, elemLength);
-       
+
     // Transfer data back to host memory
     cudaMemcpy(out, d_out, sizeof(double) * N, cudaMemcpyDeviceToHost);
 
@@ -154,9 +174,11 @@ int main(){
     cudaFree(d_out);
 
     // Deallocate host memory
-    free(a); 
-    free(b); 
+    free(a);
+    free(b);
     free(out);
+
+    cout << "Esecuzione terminata." << endl;
 }
 
 
