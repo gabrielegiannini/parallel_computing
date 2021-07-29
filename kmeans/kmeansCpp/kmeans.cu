@@ -56,13 +56,14 @@ __global__ void meanz(double means[], double S[], int dimS[], int * elemLengthPt
     means[blockIdx.x *elemLength + threadIdx.x] = means[blockIdx.x *elemLength + threadIdx.x] / dimS[blockIdx.x];
 }
 
-int parseData(ifstream csv, vector<double> data) {
-        double domainMax[] = NULL;
+/*int parseData(ifstream csv, vector<double> data) {
+        double domainMax[];
         int n = -1;
         int index = 0;
         while (!csv.eof()) {
             string row = getLine(csv);
-            string rowArr[] = row.split(";");
+            string rowArr[];
+            rowArr = row.split(";");
             if (n == -1) {
                 //n = rowArr.length - 1;
                 n = *(&rowArr + 1) - rowArr - 1;
@@ -83,7 +84,7 @@ int parseData(ifstream csv, vector<double> data) {
             data[j] = data[j] / domainMax[j%n]; // normalizza i dati -> tutto è adesso fra 0 e 1
         }
         return n;
-    }
+    }*/
 
 int main(){
     double *a, *b, *out;
@@ -99,13 +100,12 @@ int main(){
     vector<double> dataVec();
     string s;
     ifstream myfile;
-    fs::path path{"../datasetProva.csv"}
-    myfile.open(path);
-    int n = parseData(myfile);
+    myfile.open("../datasetProva.csv");
+    //int n = parseData(myfile);
     myfile.close();
-    double data[] = new double[dataVec.size()];
-    std::copy(dataVec.begin(), dataVec.end(), data);
-    printf(dataVec.size());
+    //double data[dataVec.size()];
+    //std::copy(dataVec.begin(), dataVec.end(), data);
+    //printf(dataVec.size());
 
     // Allocate host memory
     a   = (double*)malloc(sizeof(double) * N);
@@ -125,7 +125,7 @@ int main(){
     cudaMalloc((void**)&S, sizeof(double) * 2);
     cudaMalloc((void**)&dimS, sizeof(double) * 2);
     cudaMalloc((void**)&elemLength, sizeof(int));
-    cudaMalloc((void**)&data_d, sizeof(double) * dataVec.size());
+    //cudaMalloc((void**)&data_d, sizeof(double) * dataVec.size());
 
 
     cudaMalloc((void**)&d_a, sizeof(double) * N);
