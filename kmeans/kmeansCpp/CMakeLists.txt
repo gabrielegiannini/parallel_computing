@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 project(parallel_computing LANGUAGES CUDA CXX)
 
 set(CMAKE_CXX_STANDARD 17)
-
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 add_executable(kmeans-cuda kmeans.cu)
 # hack for cuda before cmake 3.18.3
