@@ -16,6 +16,7 @@
 #include <future>
 #include <filesystem>
 #include <thread>
+#include <float.h>
 
 namespace fs = std::filesystem;
 
@@ -56,6 +57,43 @@ __global__ void meanz(double means[], double S[], int dimS[], int * elemLengthPt
     means[blockIdx.x *elemLength + threadIdx.x] = means[blockIdx.x *elemLength + threadIdx.x] / dimS[blockIdx.x];
 }
 
+__global__ string getCharAlph(int i) {
+     return "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[i-1];
+}
+
+__global__ void kmean(double totalNormAvg[], double entry[][5], double means[]) {
+        double norm = 0;
+        string S [][];// dimensione clusterNumber. S e' array list di array list
+        /*for (int j = 0; j < S.length; j++) {
+            S[j] = new ArrayList<>();
+        }*/
+        for (int h = 0; h < totalNormAvg.length; h++) {// array delle norme 
+            totalNormAvg[h] = 0;
+        }
+        for (int e = 0 ; e < entry.length; e++) {
+            int posMin = 0;
+
+            double min = DBL_MAX;
+            for (int h = 0; h < means.length; h++) {
+                //double norm = norm(entry.getValue(), means[h]);
+                if (norm < min) {
+                    min = norm;
+                    posMin = h;
+                }
+            }
+            string key = getCharAlph(e);
+            S[posMin][0]=key; //è sbagliato era solo per provare
+            totalNormAvg[posMin] = totalNormAvg[posMin] + min;
+        }
+        for (int i = 0; i < totalNormAvg.length; i++) {
+            if (S[i].length > 0) {
+                totalNormAvg[i] = totalNormAvg[i] / S[i].length;
+            }
+        }
+}
+
+
+
 unsigned long parseData(ifstream &csv, vector<double> &data) {
         double *domainMax;
         unsigned long n = -1;
@@ -63,7 +101,7 @@ unsigned long parseData(ifstream &csv, vector<double> &data) {
         while (!csv.eof()) {
             string row;
             getline(csv, row);
-            cout << row << endl;
+            //cout << row << endl;
             istringstream iss(row);
             // perche ovviamente in c++ string.split() non esiste...
             vector<string> rowArr;
@@ -116,6 +154,7 @@ int main(){
     double *data_d;
 
     vector<double> dataVec(0);
+    vector<double> totalNormAvg(CLUSTER_NUMBER);
     string s;
     ifstream myfile;
     myfile.open("../../datasetProva.csv");
