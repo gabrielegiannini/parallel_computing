@@ -26,6 +26,7 @@ using namespace std;
 #define MAX_ERR 1e-6
 
 #define CLUSTER_NUMBER 2
+#define ELEMENTS_NUMBER 10
 
 __global__ void normA(double a[], double b[], double res[], int n, double sum[]) {
     res[blockIdx.x*n + threadIdx.x] = pow(a[blockIdx.x*n + threadIdx.x] - b[blockIdx.x*n + threadIdx.x], 2);
@@ -57,37 +58,33 @@ __global__ void meanz(double means[], double S[], int dimS[], int * elemLengthPt
     means[blockIdx.x *elemLength + threadIdx.x] = means[blockIdx.x *elemLength + threadIdx.x] / dimS[blockIdx.x];
 }
 
-__global__ string getCharAlph(int i) {
-     return "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[i-1];
-}
-
 __global__ void kmean(double totalNormAvg[], double entry[][5], double means[]) {
         double norm = 0;
-        string S [][];// dimensione clusterNumber. S e' array list di array list
+        char S [CLUSTER_NUMBER][ELEMENTS_NUMBER];// dimensione clusterNumber. S e' array list di array list
         /*for (int j = 0; j < S.length; j++) {
             S[j] = new ArrayList<>();
         }*/
-        for (int h = 0; h < totalNormAvg.length; h++) {// array delle norme 
+        for (int h = 0; h < sizeof(totalNormAvg); h++) {// array delle norme 
             totalNormAvg[h] = 0;
         }
-        for (int e = 0 ; e < entry.length; e++) {
+        for (int e = 0 ; e < sizeof(entry); e++) {
             int posMin = 0;
 
             double min = DBL_MAX;
-            for (int h = 0; h < means.length; h++) {
+            for (int h = 0; h < sizeof(means); h++) {
                 //double norm = norm(entry.getValue(), means[h]);
                 if (norm < min) {
                     min = norm;
                     posMin = h;
                 }
             }
-            string key = getCharAlph(e);
-            S[posMin][0]=key; //è sbagliato era solo per provare
+            char keyC = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[e-1];
+            S[posMin][0]=keyC; //è sbagliato era solo per provare
             totalNormAvg[posMin] = totalNormAvg[posMin] + min;
         }
-        for (int i = 0; i < totalNormAvg.length; i++) {
-            if (S[i].length > 0) {
-                totalNormAvg[i] = totalNormAvg[i] / S[i].length;
+        for (int i = 0; i < sizeof(totalNormAvg); i++) {
+            if (sizeof(S[i]) > 0) {
+                totalNormAvg[i] = totalNormAvg[i] / sizeof(S[i]);
             }
         }
 }
