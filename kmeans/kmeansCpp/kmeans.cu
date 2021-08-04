@@ -64,14 +64,14 @@ __global__ void kmean(double totalNormAvg[], double entry[][5], double means[]) 
         /*for (int j = 0; j < S.length; j++) {
             S[j] = new ArrayList<>();
         }*/
-        for (int h = 0; h < sizeof(totalNormAvg); h++) {// array delle norme 
+        for (int h = 0; h < sizeof(totalNormAv\g); h++) {// array delle norme. no cuda
             totalNormAvg[h] = 0;
         }
-        for (int e = 0 ; e < sizeof(entry); e++) {
+        for (int e = 0 ; e < sizeof(entry); e++) {// boh si parrallelizza roba qui? sono tutte assegnazioni e una somma, non so quanto possa valerne la pena. ma soprattutto, come la prende se norm al suo interno e` anche lei parallelizzata?
             int posMin = 0;
 
             double min = DBL_MAX;
-            for (int h = 0; h < sizeof(means); h++) {
+            for (int h = 0; h < sizeof(means); h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
                 //double norm = norm(entry.getValue(), means[h]);
                 if (norm < min) {
                     min = norm;
