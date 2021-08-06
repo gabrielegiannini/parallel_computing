@@ -28,6 +28,36 @@ using namespace std;
 #define CLUSTER_NUMBER 2
 #define ELEMENTS_NUMBER 10
 
+void kmean(double totalNormAvg[5],  unordered_map<string, double> entry, double means[5]) {
+        double norm = 0;
+        vector<vector<string>> S(5);// dimensione clusterNumber. S e' array list di array list
+        /*for (int j = 0; j < S.length; j++) {
+            S[j] = new ArrayList<>();
+        }*/
+        for (int h = 0; h < 5; h++) {// array delle norme. no cuda
+            totalNormAvg[h] = 0;
+        }
+        for (const auto& e : entry ) {// boh si parrallelizza roba qui? sono tutte assegnazioni e una somma, non so quanto possa valerne la pena. ma soprattutto, come la prende se norm al suo interno e` anche lei parallelizzata?
+            int posMin = 0;
+
+            double min = DBL_MAX;
+            for (int h = 0; h < 5; h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
+                //double norm = norm(entry.getValue(), means[h]);
+                if (norm < min) {
+                    min = norm;
+                    posMin = h;
+                }
+            }
+            S[posMin].push_back(e.first); //è sbagliato era solo per provare
+            totalNormAvg[posMin] = totalNormAvg[posMin] + min;
+        }
+        for (int i = 0; i < 5; i++) {
+            if (S[i].size() > 0) {
+                totalNormAvg[i] = totalNormAvg[i] / S[i].size();
+            }
+        }
+}
+
 __global__ void normA(double a[], double b[], double res[], int n, double sum[]) {
     res[blockIdx.x*n + threadIdx.x] = pow(a[blockIdx.x*n + threadIdx.x] - b[blockIdx.x*n + threadIdx.x], 2);
     __syncthreads();
@@ -57,38 +87,6 @@ __global__ void meanz(double means[], double S[], int dimS[], int * elemLengthPt
     // divide per la dimensione del cluster per fare la media -> coordinata n-esima del nuovo centroide di questo cluster
     means[blockIdx.x *elemLength + threadIdx.x] = means[blockIdx.x *elemLength + threadIdx.x] / dimS[blockIdx.x];
 }
-
-__global__ void kmean(double totalNormAvg[], double entry[][5], double means[]) {
-        double norm = 0;
-        char S [CLUSTER_NUMBER][ELEMENTS_NUMBER];// dimensione clusterNumber. S e' array list di array list
-        /*for (int j = 0; j < S.length; j++) {
-            S[j] = new ArrayList<>();
-        }*/
-        for (int h = 0; h < sizeof(totalNormAv\g); h++) {// array delle norme. no cuda
-            totalNormAvg[h] = 0;
-        }
-        for (int e = 0 ; e < sizeof(entry); e++) {// boh si parrallelizza roba qui? sono tutte assegnazioni e una somma, non so quanto possa valerne la pena. ma soprattutto, come la prende se norm al suo interno e` anche lei parallelizzata?
-            int posMin = 0;
-
-            double min = DBL_MAX;
-            for (int h = 0; h < sizeof(means); h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
-                //double norm = norm(entry.getValue(), means[h]);
-                if (norm < min) {
-                    min = norm;
-                    posMin = h;
-                }
-            }
-            char keyC = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[e-1];
-            S[posMin][0]=keyC; //è sbagliato era solo per provare
-            totalNormAvg[posMin] = totalNormAvg[posMin] + min;
-        }
-        for (int i = 0; i < sizeof(totalNormAvg); i++) {
-            if (sizeof(S[i]) > 0) {
-                totalNormAvg[i] = totalNormAvg[i] / sizeof(S[i]);
-            }
-        }
-}
-
 
 
 unsigned long parseData(ifstream &csv, vector<double> &data) {
