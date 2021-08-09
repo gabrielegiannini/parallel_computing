@@ -27,6 +27,7 @@ using namespace std;
 
 #define CLUSTER_NUMBER 2
 #define ELEMENTS_NUMBER 10
+#define ARRAYSIZEOF(ptr) (sizeof(ptr)/sizeof(ptr[0]))
 
 void kmean(double totalNormAvg[5],  unordered_map<string, double> entry, double means[5]) {
         double norm = 0;
@@ -58,19 +59,73 @@ void kmean(double totalNormAvg[5],  unordered_map<string, double> entry, double 
         }
 }
 
-__global__ void normA(double a[], double b[], double res[], int n, double sum[]) {
-    res[blockIdx.x*n + threadIdx.x] = pow(a[blockIdx.x*n + threadIdx.x] - b[blockIdx.x*n + threadIdx.x], 2);
+
+__global__ void normA(double vect[], double centroids[], double res[], int n, double sum[]) {
+    /* 
+       Calcoliamo la norma fra un vettore e un centroide
+       allora, res contiene i risultati intermedi del calcolo della norma, ovvero i quadrati delle differenze fra coordinate corrispondenti dei vettori
+       quindi e' grande #vettori*#cluster*#coordinate(cioe' dimensione dei singoli vettori, cioe' n)
+       
+       blockIdx.y identifica il vettore di cui calcolare la norma
+       blockIdx.x identifica il cluster, ovvero il centroide con cui fare la norma
+       threadIdx.x identifica la coordinata di cui si deve occupare il singolo core
+    */
+    res[blockIdx.y*n + blockIdx.x*sizeof(vect) + threadIdx.x] = pow(vect[blockIdx.y*n + threadIdx.x] - centroids[blockIdx.x*n + threadIdx.x], 2);
     __syncthreads();
     if(threadIdx.x == 0){
         for(int i=0; i<n;i++){
-            sum[blockIdx.x] = sum[blockIdx.x] + res[blockIdx.x*n + i];
+            sum[blockIdx.x*sizeof(vect)+blockIdx.y] = sum[blockIdx.x*sizeof(vect)+blockIdx.y] + res[blockIdx.y*n + blockIdx.x*sizeof(vect) + i];
         }
     }
 }
 
-__global__ void meanz(double means[], double S[], int dimS[], int * elemLengthPtr) {// calcola centroidi
+__global__ void kmeanDevice(double S[], int dimS[], int * elemLengthPtr, double totalNormAvg[],  double data[], double centroids[], double res[], double sum[]){
+        int n = *elemLengthPtr;
+        for (int h = 0; h < ARRAYSIZEOF(totalNormAvg); h++) {// array delle norme. no cuda
+            totalNormAvg[h] = 0;
+        }
+        
+        int posMin[ARRAYSIZEOF(data)]={0};
+
+        double min[ARRAYSIZEOF(data)]={DBL_MAX}; //inizializzare a DBL_MAX
+
+        //norm(data, means);
+        normA<<<CLUSTER_NUMBER,5>>>(data, centroids, res, n, sum);
+        for (int v=0; v<ARRAYSIZEOF(data);v++){
+            for (int h = 0; h < 5; h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
+                
+                if (sum[h*ARRAYSIZEOF(data)+v] < min[v]) {
+                    min[v] = sum[h*ARRAYSIZEOF(data)+v];
+                    posMin[v] = h;
+                }
+            }
+            dimS[posMin[v]] += 1;
+        }
+
+        int filledS[ARRAYSIZEOF(dimS)]={0};
+        for (int l = 0; l<ARRAYSIZEOF(data); l++){
+            int targetPosition = 0;
+            for (int i = 0; i < posMin[l]; i++) {
+                targetPosition += dimS[i];
+            }
+            targetPosition += filledS[posMin[l]];
+            for (int k=0;k<n;k++){
+                S[targetPosition*n+k] = data[l*n+k];
+            }
+            filledS[posMin[l]] += 1;
+            totalNormAvg[posMin[l]] = totalNormAvg[posMin[l]] + min[l];
+        }
+
+        for (int i = 0; i < ARRAYSIZEOF(totalNormAvg); i++) {
+            if (dimS[i] > 0) {
+                totalNormAvg[i] = totalNormAvg[i] / dimS[i];
+            }
+        }
+}
+
+__global__ void meanz(double centroids[], double S[], int dimS[], int * elemLengthPtr) {// calcola centroidi
     int elemLength = *elemLengthPtr;
-    means[blockIdx.x*elemLength + threadIdx.x] = 0;
+    centroids[blockIdx.x*elemLength + threadIdx.x] = 0;
     int dimSum = 0;
     // calcola la coordinata iniziale del primo vettore del cluster blockIdx.x
     for (int j=0; j<blockIdx.x; j++) {
@@ -80,12 +135,12 @@ __global__ void meanz(double means[], double S[], int dimS[], int * elemLengthPt
     // scorre tutti gli elementi del cluster (la grandezza del cluster e' in dimS[blockIdx.x])
     for (int i=0; i<dimS[blockIdx.x]; i++) {
         dimSum += elemLength;
-        // quindi alla fine in means c'e' la somma di tutte le n-esime coordinate di ogni elemento del cluster
-        means[blockIdx.x *elemLength + threadIdx.x] = means[blockIdx.x *elemLength + threadIdx.x] + S[dimSum + threadIdx.x];
+        // quindi alla fine in centroids c'e' la somma di tutte le n-esime coordinate di ogni elemento del cluster
+        centroids[blockIdx.x *elemLength + threadIdx.x] = centroids[blockIdx.x *elemLength + threadIdx.x] + S[dimSum + threadIdx.x];
 
     }
     // divide per la dimensione del cluster per fare la media -> coordinata n-esima del nuovo centroide di questo cluster
-    means[blockIdx.x *elemLength + threadIdx.x] = means[blockIdx.x *elemLength + threadIdx.x] / dimS[blockIdx.x];
+    centroids[blockIdx.x *elemLength + threadIdx.x] = centroids[blockIdx.x *elemLength + threadIdx.x] / dimS[blockIdx.x];
 }
 
 
