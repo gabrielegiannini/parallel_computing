@@ -201,7 +201,7 @@ int main(){
     double *S;
     int *dimS;
     int *elemLength;
-    double *data_d;
+    //double *data_d;
 
     vector<double> dataVec(0);
     vector<double> totalNormAvg(CLUSTER_NUMBER);
