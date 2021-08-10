@@ -60,7 +60,7 @@ void kmean(double totalNormAvg[5],  unordered_map<string, double> entry, double 
 }
 
 
-__global__ void normA(double vect[], double centroids[], double res[], int n, double sum[]) {
+__global__ void normA(double vect[], double centroids[], double res[], int n, double sum[], size_t dataSize) {
     /* 
        Calcoliamo la norma fra un vettore e un centroide
        allora, res contiene i risultati intermedi del calcolo della norma, ovvero i quadrati delle differenze fra coordinate corrispondenti dei vettori
@@ -70,49 +70,52 @@ __global__ void normA(double vect[], double centroids[], double res[], int n, do
        blockIdx.x identifica il cluster, ovvero il centroide con cui fare la norma
        threadIdx.x identifica la coordinata di cui si deve occupare il singolo core
     */
-    res[blockIdx.y*n + blockIdx.x*ARRAYSIZEOF(vect) + threadIdx.x] = pow(vect[blockIdx.y*n + threadIdx.x] - centroids[blockIdx.x*n + threadIdx.x], 2);
+    printf("Indice res %lu\n",blockIdx.y*n + blockIdx.x*dataSize + threadIdx.x);
+    res[blockIdx.y*n + blockIdx.x*dataSize*n + threadIdx.x] = pow(vect[blockIdx.y*n + threadIdx.x] - centroids[blockIdx.x*n + threadIdx.x], 2);
     __syncthreads();
     if(threadIdx.x == 0){
         for(int i=0; i<n;i++){
-            sum[blockIdx.x*ARRAYSIZEOF(vect)+blockIdx.y] = sum[blockIdx.x*ARRAYSIZEOF(vect)+blockIdx.y] + res[blockIdx.y*n + blockIdx.x*ARRAYSIZEOF(vect) + i];
+            sum[blockIdx.x*dataSize+blockIdx.y] = sum[blockIdx.x*dataSize+blockIdx.y] + res[blockIdx.y*n + blockIdx.x*dataSize*n + i];
         }
     }
 }
 
-__global__ void kmeanDevice(double S[], int dimS[], int * elemLengthPtr, double totalNormAvg[],  double data[], double centroids[], double res[], double sum[]){
+// dataSize è il numero di vettori, ovvero sizeof(data) / n (sennò aveva davvero poco senso)
+__global__ void kmeanDevice(double S[], int dimS[], int * elemLengthPtr, double totalNormAvg[],  double data[], double centroids[], double res[], double sum[], size_t dataSize, size_t clusterNumber){
         int n = *elemLengthPtr;
-        for (int h = 0; h < ARRAYSIZEOF(totalNormAvg); h++) {// array delle norme. no cuda
-            totalNormAvg[h] = 0;
-        }
         
-        int posMin[ARRAYSIZEOF(data)]={0};
+        int *posMin = new int[dataSize];
+        double *min = new double[dataSize]; //inizializzare a DBL_MAX
 
-        double min[ARRAYSIZEOF(data)]; //inizializzare a DBL_MAX
-        for (int h = 0; h < ARRAYSIZEOF(min); h++) {// array delle norme. no cuda
+        for (int h = 0; h < dataSize; h++) {// array delle norme. no cuda
             min[h] = DBL_MAX;
+            posMin[h] = 0;
         }
 
-        for (int h = 0; h < ARRAYSIZEOF(dimS); h++) {// array delle norme. no cuda
+        int *filledS = new int[clusterNumber];
+        for (int h = 0; h < clusterNumber; h++) {// array delle norme. no cuda
             dimS[h] = 0;
+            totalNormAvg[h] = 0;
+            filledS[h] = 0;
         }
 
-        //norm(data, means);
-        dim3 numBlocks(CLUSTER_NUMBER, ARRAYSIZEOF(data));
-        normA<<<numBlocks,n>>>(data, centroids, res, n, sum);
-        cudaDeviceSynchronize();
-        for (int v=0; v<ARRAYSIZEOF(data);v++){
-            for (int h = 0; h < ARRAYSIZEOF(centroids); h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
-                
-                if (sum[h*ARRAYSIZEOF(data)+v] < min[v]) {
-                    min[v] = sum[h*ARRAYSIZEOF(data)+v];
+    //norm(data, means);
+    dim3 numBlocks(clusterNumber, dataSize);
+    printf("Sto per fare norm\n");
+    normA<<<numBlocks,n>>>(data, centroids, res, n, sum, dataSize);
+    cudaDeviceSynchronize();
+    for (int v=0; v<dataSize;v++){
+            for (int h = 0; h < clusterNumber; h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
+
+                if (sum[h*dataSize+v] < min[v]) {
+                    min[v] = sum[h*dataSize+v];
                     posMin[v] = h;
                 }
             }
             dimS[posMin[v]] += 1;
         }
 
-        int filledS[ARRAYSIZEOF(dimS)]={0};
-        for (int l = 0; l<ARRAYSIZEOF(data); l++){
+        for (int l = 0; l<dataSize; l++){
             int targetPosition = 0;
             for (int i = 0; i < posMin[l]; i++) {
                 targetPosition += dimS[i];
@@ -125,7 +128,7 @@ __global__ void kmeanDevice(double S[], int dimS[], int * elemLengthPtr, double 
             totalNormAvg[posMin[l]] = totalNormAvg[posMin[l]] + min[l];
         }
 
-        for (int i = 0; i < ARRAYSIZEOF(totalNormAvg); i++) {
+        for (int i = 0; i < clusterNumber; i++) {
             if (dimS[i] > 0) {
                 totalNormAvg[i] = totalNormAvg[i] / dimS[i];
             }
@@ -270,7 +273,7 @@ int main(){
     // Executing kernel 
     //normA<<<CLUSTER_NUMBER,5>>>(d_a, d_b, res, 5, sum);
 
-    kmeanDevice<<<1,1>>>(S, dimS, elemLength, totalNormAvg,  data_d, centroids, res, sum);
+    kmeanDevice<<<1,1>>>(S, dimS, elemLength, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
     //cudaDeviceSynchronize();
     //meanz<<<CLUSTER_NUMBER, 5>>>(means, S, dimS, elemLength);
 
@@ -291,6 +294,8 @@ int main(){
     for(int i = 0; i<20; i++){
         cout << sum_host[i] << endl;
     }
+    dim3 numBlocks(CLUSTER_NUMBER, ARRAYSIZEOF(data));
+    cout << "Dimensione grid: " << CLUSTER_NUMBER << "x" << ARRAYSIZEOF(data)/n << endl;
 
     // Verification
 
