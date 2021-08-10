@@ -25,7 +25,7 @@ using namespace std;
 #define N 10000000
 #define MAX_ERR 1e-6
 
-#define CLUSTER_NUMBER 2
+#define CLUSTER_NUMBER 5
 #define ELEMENTS_NUMBER 10
 #define ARRAYSIZEOF(ptr) (sizeof(ptr)/sizeof(ptr[0]))
 
@@ -70,11 +70,11 @@ __global__ void normA(double vect[], double centroids[], double res[], int n, do
        blockIdx.x identifica il cluster, ovvero il centroide con cui fare la norma
        threadIdx.x identifica la coordinata di cui si deve occupare il singolo core
     */
-    res[blockIdx.y*n + blockIdx.x*sizeof(vect) + threadIdx.x] = pow(vect[blockIdx.y*n + threadIdx.x] - centroids[blockIdx.x*n + threadIdx.x], 2);
+    res[blockIdx.y*n + blockIdx.x*ARRAYSIZEOF(vect) + threadIdx.x] = pow(vect[blockIdx.y*n + threadIdx.x] - centroids[blockIdx.x*n + threadIdx.x], 2);
     __syncthreads();
     if(threadIdx.x == 0){
         for(int i=0; i<n;i++){
-            sum[blockIdx.x*sizeof(vect)+blockIdx.y] = sum[blockIdx.x*sizeof(vect)+blockIdx.y] + res[blockIdx.y*n + blockIdx.x*sizeof(vect) + i];
+            sum[blockIdx.x*ARRAYSIZEOF(vect)+blockIdx.y] = sum[blockIdx.x*ARRAYSIZEOF(vect)+blockIdx.y] + res[blockIdx.y*n + blockIdx.x*ARRAYSIZEOF(vect) + i];
         }
     }
 }
@@ -87,12 +87,21 @@ __global__ void kmeanDevice(double S[], int dimS[], int * elemLengthPtr, double 
         
         int posMin[ARRAYSIZEOF(data)]={0};
 
-        double min[ARRAYSIZEOF(data)]={DBL_MAX}; //inizializzare a DBL_MAX
+        double min[ARRAYSIZEOF(data)]; //inizializzare a DBL_MAX
+        for (int h = 0; h < ARRAYSIZEOF(min); h++) {// array delle norme. no cuda
+            min[h] = DBL_MAX;
+        }
+
+        for (int h = 0; h < ARRAYSIZEOF(dimS); h++) {// array delle norme. no cuda
+            dimS[h] = 0;
+        }
 
         //norm(data, means);
-        normA<<<CLUSTER_NUMBER,5>>>(data, centroids, res, n, sum);
+        dim3 numBlocks(CLUSTER_NUMBER, ARRAYSIZEOF(data));
+        normA<<<numBlocks,n>>>(data, centroids, res, n, sum);
+        cudaDeviceSynchronize();
         for (int v=0; v<ARRAYSIZEOF(data);v++){
-            for (int h = 0; h < 5; h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
+            for (int h = 0; h < ARRAYSIZEOF(centroids); h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
                 
                 if (sum[h*ARRAYSIZEOF(data)+v] < min[v]) {
                     min[v] = sum[h*ARRAYSIZEOF(data)+v];
@@ -197,29 +206,38 @@ int main(){
     double *d_a, *d_b, *d_out;
     double *res;
     double *sum;
+    double *sum_host;
     double *means;
     double *S;
+    double *S_host;
     int *dimS;
+    int *dimS_host;
     int *elemLength;
-    //double *data_d;
+    double *totalNormAvg;
+    double *centroids;
+    double *data_d;
 
     vector<double> dataVec(0);
-    vector<double> totalNormAvg(CLUSTER_NUMBER);
-    string s;
+    //vector<double> totalNormAvg(CLUSTER_NUMBER);
     ifstream myfile;
-    myfile.open("../../datasetProva.csv");
+    //myfile.open("../../datasetProva.csv");
+    myfile.open("../../test_reale.csv");
     unsigned long n = parseData(myfile, dataVec);
     myfile.close();
     double data[dataVec.size()];
     std::copy(dataVec.begin(), dataVec.end(), data);
     //printf(dataVec.size());
     cout << "n = " << n << "\n";
-    cout << "Data size: " << dataVec.size() << endl;
+    cout << "Datavec size: " << dataVec.size() << endl;
+    cout << "Data size: " << ARRAYSIZEOF(data) << endl;
 
     // Allocate host memory
     a   = (double*)malloc(sizeof(double) * N);
     b   = (double*)malloc(sizeof(double) * N);
     out = (double*)malloc(sizeof(double) * N);
+    S_host=(double*)malloc(sizeof(double) * dataVec.size());
+    dimS_host=(int*)malloc(sizeof(int) * CLUSTER_NUMBER);
+    sum_host = (double*)malloc(sizeof(double) * dataVec.size()/n*CLUSTER_NUMBER);
 
     // Initialize host arrays
     for(int i = 0; i < N; i++){
@@ -228,13 +246,14 @@ int main(){
     }
 
     // Allocate device memory
-    cudaMalloc((void**)&res, sizeof(double) * 10);
-    cudaMalloc((void**)&sum, sizeof(double) * 2);
-    cudaMalloc((void**)&means, sizeof(double) * 2);
-    cudaMalloc((void**)&S, sizeof(double) * 2);
-    cudaMalloc((void**)&dimS, sizeof(double) * 2);
+    cudaMalloc((void**)&res, sizeof(double) * dataVec.size()*CLUSTER_NUMBER);
+    cudaMalloc((void**)&sum, sizeof(double) * dataVec.size()/n*CLUSTER_NUMBER);
+    cudaMalloc((void**)&S, sizeof(double) * dataVec.size());
+    cudaMalloc((void**)&dimS, sizeof(double) * CLUSTER_NUMBER);
+    cudaMalloc((void**)&totalNormAvg, sizeof(double) * CLUSTER_NUMBER);
     cudaMalloc((void**)&elemLength, sizeof(int));
-    //cudaMalloc((void**)&data_d, sizeof(double) * dataVec.size());
+    cudaMalloc((void**)&centroids, sizeof(double) * CLUSTER_NUMBER*n);
+    cudaMalloc((void**)&data_d, sizeof(double) * dataVec.size());
 
 
     cudaMalloc((void**)&d_a, sizeof(double) * N);
@@ -244,16 +263,34 @@ int main(){
     // Transfer data from host to device memory
     cudaMemcpy(d_a, a, sizeof(double) * N, cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, b, sizeof(double) * N, cudaMemcpyHostToDevice);
+    cudaMemcpy(data_d, data, sizeof(double) * dataVec.size(), cudaMemcpyHostToDevice);
+    cudaMemcpy(elemLength, &n, sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(centroids, data, sizeof(double)*n*CLUSTER_NUMBER, cudaMemcpyHostToDevice); //i primi CLUSTER_NUMBER vettori di data per provare
 
     // Executing kernel 
-    normA<<<CLUSTER_NUMBER,5>>>(d_a, d_b, res, 5, sum);
+    //normA<<<CLUSTER_NUMBER,5>>>(d_a, d_b, res, 5, sum);
 
-    cudaDeviceSynchronize();
-
-    meanz<<<CLUSTER_NUMBER, 5>>>(means, S, dimS, elemLength);
+    kmeanDevice<<<1,1>>>(S, dimS, elemLength, totalNormAvg,  data_d, centroids, res, sum);
+    //cudaDeviceSynchronize();
+    //meanz<<<CLUSTER_NUMBER, 5>>>(means, S, dimS, elemLength);
 
     // Transfer data back to host memory
     cudaMemcpy(out, d_out, sizeof(double) * N, cudaMemcpyDeviceToHost);
+    cudaMemcpy(S_host, S, sizeof(double) * dataVec.size(), cudaMemcpyDeviceToHost);
+    int index = 1;
+    for(int i = index*n; i<(index+1)*n; i++){
+        cout << S_host[i] << endl;
+    }
+    cout << "\n";
+    cudaMemcpy(dimS_host, dimS, sizeof(int) * CLUSTER_NUMBER, cudaMemcpyDeviceToHost);
+    for(int i = 0; i<CLUSTER_NUMBER; i++){
+        cout << dimS_host[i] << endl;
+    }
+    cout << "\n";
+    cudaMemcpy(sum_host, sum, sizeof(double) * dataVec.size()/n*CLUSTER_NUMBER, cudaMemcpyDeviceToHost);
+    for(int i = 0; i<20; i++){
+        cout << sum_host[i] << endl;
+    }
 
     // Verification
 
