@@ -17,6 +17,8 @@
 #include <filesystem>
 #include <thread>
 #include <float.h>
+#include <sstream>
+#include <iomanip>
 
 namespace fs = std::filesystem;
 
@@ -49,7 +51,7 @@ __global__ void normA(const double vect[], const double centroids[], double res[
 }
 
 // dataSize è il numero di vettori, ovvero sizeof(data) / n (sennò aveva davvero poco senso)
-__global__ void kmeanDevice(double S[], int dimS[], size_t n, double totalNormAvg[],  const double data[], double centroids[], double res[], double sum[], size_t dataSize, size_t clusterNumber){
+__global__ void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[],  const double data[], double centroids[], double res[], double sum[], size_t dataSize, size_t clusterNumber){
     int *posMin = new int[dataSize];
     auto *min = new double[dataSize]; //inizializzare a DBL_MAX
 
@@ -86,9 +88,10 @@ __global__ void kmeanDevice(double S[], int dimS[], size_t n, double totalNormAv
             targetPosition += dimS[i];
         }
         targetPosition += filledS[posMin[l]];
-        for (int k=0;k<n;k++){
-            S[targetPosition*n+k] = data[l*n+k];
-        }
+//        for (int k=0;k<n;k++){
+//            S[targetPosition*n+k] = data[l*n+k];
+//        }
+        S[targetPosition] = l;
         filledS[posMin[l]] += 1;
         totalNormAvg[posMin[l]] = totalNormAvg[posMin[l]] + min[l];
     }
@@ -103,17 +106,18 @@ __global__ void kmeanDevice(double S[], int dimS[], size_t n, double totalNormAv
     delete[] posMin;
 }
 
-__global__ void meanz(double centroids[], const double S[], const int dimS[], size_t n) {// calcola centroidi
+__global__ void meanz(double centroids[], const int S[], const int dimS[], size_t n) {// calcola centroidi
     centroids[blockIdx.x * n + threadIdx.x] = 0;
     size_t dimSum = 0;
     // calcola la coordinata iniziale del primo vettore del cluster blockIdx.x
     for (int j=0; j<blockIdx.x; j++) {
         dimSum += dimS[j];
     }
-    dimSum = dimSum * n;
+//    dimSum = dimSum * n;
     // scorre tutti gli elementi del cluster (la grandezza del cluster e' in dimS[blockIdx.x])
     for (int i=0; i<dimS[blockIdx.x]; i++) {
-        dimSum += n;
+        //dimSum += n;
+        dimSum += 1;
         // quindi alla fine in centroids c'e' la somma di tutte le n-esime coordinate di ogni elemento del cluster
         centroids[blockIdx.x * n + threadIdx.x] = centroids[blockIdx.x * n + threadIdx.x] + S[dimSum + threadIdx.x];
 
@@ -123,7 +127,7 @@ __global__ void meanz(double centroids[], const double S[], const int dimS[], si
 }
 
 
-unsigned long parseData(ifstream &csv, vector<double> &data) {
+unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &labels) {
         double *domainMax;
         unsigned long n = -1;
         int index = 0;
@@ -135,6 +139,7 @@ unsigned long parseData(ifstream &csv, vector<double> &data) {
             // perche ovviamente in c++ string.split() non esiste...
             vector<string> rowArr;
             const char delimiter = ';';
+            labels.push_back(row.substr(0, row.find(delimiter)));
             // evita il primo token, tanto è il nome del primo vettore
             size_t start = row.find(delimiter) + 1;
             size_t end = row.find(delimiter, start);
@@ -171,12 +176,43 @@ unsigned long parseData(ifstream &csv, vector<double> &data) {
         return n;
     }
 
+void printClusters(vector<string> &labels, int clusters[], const int dimS[], size_t clusterNumber, size_t dataSize) {
+    //string table = "Cluster:\n\n";
+    ostringstream table;
+    size_t width = min(max(labels[0].length()*5/2, 6lu), 20lu);
+    table << "Clusters:\n\n";
+    int processedCluster[clusterNumber];
+    for (size_t col = 0; col < clusterNumber; col++) {
+        table << setw(width) << col;
+        processedCluster[col] = 0;
+    }
+    table << setw(width/2) << endl;
+    for (int i = 0; i < clusterNumber*width; i++) {
+        table << "·";
+    }
+    table << endl;
+    size_t processed = 0;
+    while(processed < dataSize){
+        for (size_t col = 0; col < clusterNumber; col++) {
+            if (dimS[col] > processedCluster[col]) {
+                table << setw(width) << labels[clusters[processed]];
+                processedCluster[col] += 1;
+                processed++;
+            } else {
+                table << setw(width) << " ";
+            }
+        }
+        table << endl;
+    }
+    cout << table.str() << endl;
+}
+
 int main(){
     double *res;
     double *sum;
     double *sum_host;
-    double *S;
-    double *S_host;
+    int *S;
+    int *S_host;
     int *dimS;
     int *dimS_host;
     int *elemLength;
@@ -185,11 +221,12 @@ int main(){
     double *data_d;
 
     vector<double> dataVec(0);
+    vector<string> dataLabel(0);
     //vector<double> totalNormAvg(CLUSTER_NUMBER);
     ifstream myfile;
-    //myfile.open("../../datasetProva.csv");
+//    myfile.open("../../datasetProva.csv");
     myfile.open("../../test_reale.csv");
-    unsigned long n = parseData(myfile, dataVec);
+    unsigned long n = parseData(myfile, dataVec, dataLabel);
     myfile.close();
     double data[dataVec.size()];
     std::copy(dataVec.begin(), dataVec.end(), data);
@@ -199,14 +236,14 @@ int main(){
     cout << "Data size: " << ARRAYSIZEOF(data)/n << endl;
 
     // Allocate host memory
-    S_host=(double*)malloc(sizeof(double) * dataVec.size());
+    S_host=(int*)malloc(sizeof(int) * dataVec.size()/n);
     dimS_host=(int*)malloc(sizeof(int) * CLUSTER_NUMBER);
     sum_host = (double*)malloc(sizeof(double) * dataVec.size()/n*CLUSTER_NUMBER);
 
     // Allocate device memory
     cudaMalloc((void**)&res, sizeof(double) * dataVec.size()*CLUSTER_NUMBER);
     cudaMalloc((void**)&sum, sizeof(double) * dataVec.size()/n*CLUSTER_NUMBER);
-    cudaMalloc((void**)&S, sizeof(double) * dataVec.size());
+    cudaMalloc((void**)&S, sizeof(int) * dataVec.size()/n);
     cudaMalloc((void**)&dimS, sizeof(double) * CLUSTER_NUMBER);
     cudaMalloc((void**)&totalNormAvg, sizeof(double) * CLUSTER_NUMBER);
     cudaMalloc((void**)&elemLength, sizeof(int));
@@ -228,22 +265,15 @@ int main(){
 //    kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
 //    cudaDeviceSynchronize();
     // Transfer data back to host memory
-    cudaMemcpy(S_host, S, sizeof(double) * dataVec.size(), cudaMemcpyDeviceToHost);
-    size_t index = 1;
-    for(size_t i = index*n; i<(index+1)*n; i++){
-        cout << S_host[i] << endl;
-    }
-    cout << "\n";
+    cudaMemcpy(S_host, S, sizeof(int) * dataVec.size()/n, cudaMemcpyDeviceToHost);
     cudaMemcpy(dimS_host, dimS, sizeof(int) * CLUSTER_NUMBER, cudaMemcpyDeviceToHost);
+    cout << "Dimensione grid: " << CLUSTER_NUMBER << "x" << ARRAYSIZEOF(data)/n << endl;
+    cout << "Dimensioni dei cluster\n";
     for(int i = 0; i<CLUSTER_NUMBER; i++){
         cout << dimS_host[i] << endl;
     }
     cout << "\n";
-    cudaMemcpy(sum_host, sum, sizeof(double) * dataVec.size()/n*CLUSTER_NUMBER, cudaMemcpyDeviceToHost);
-    for(int i = 0; i<20; i++){
-        cout << sum_host[i] << endl;
-    }
-    cout << "Dimensione grid: " << CLUSTER_NUMBER << "x" << ARRAYSIZEOF(data)/n << endl;
+    printClusters(dataLabel, S_host, dimS_host, CLUSTER_NUMBER, ARRAYSIZEOF(data)/n);
 
     // Verification
 
