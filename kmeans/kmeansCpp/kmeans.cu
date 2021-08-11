@@ -26,41 +26,9 @@ using namespace std;
 #define MAX_ERR 1e-6
 
 #define CLUSTER_NUMBER 5
-#define ELEMENTS_NUMBER 10
 #define ARRAYSIZEOF(ptr) (sizeof(ptr)/sizeof(ptr[0]))
 
-void kmean(double totalNormAvg[5],  unordered_map<string, double> entry, double means[5]) {
-        double norm = 0;
-        vector<vector<string>> S(5);// dimensione clusterNumber. S e' array list di array list
-        /*for (int j = 0; j < S.length; j++) {
-            S[j] = new ArrayList<>();
-        }*/
-        for (int h = 0; h < 5; h++) {// array delle norme. no cuda
-            totalNormAvg[h] = 0;
-        }
-        for (const auto& e : entry ) {// boh si parrallelizza roba qui? sono tutte assegnazioni e una somma, non so quanto possa valerne la pena. ma soprattutto, come la prende se norm al suo interno e` anche lei parallelizzata?
-            int posMin = 0;
-
-            double min = DBL_MAX;
-            for (int h = 0; h < 5; h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
-                //double norm = norm(entry.getValue(), means[h]);
-                if (norm < min) {
-                    min = norm;
-                    posMin = h;
-                }
-            }
-            S[posMin].push_back(e.first); //è sbagliato era solo per provare
-            totalNormAvg[posMin] = totalNormAvg[posMin] + min;
-        }
-        for (int i = 0; i < 5; i++) {
-            if (S[i].size() > 0) {
-                totalNormAvg[i] = totalNormAvg[i] / S[i].size();
-            }
-        }
-}
-
-
-__global__ void normA(double vect[], double centroids[], double res[], int n, double sum[], size_t dataSize) {
+__global__ void normA(const double vect[], const double centroids[], double res[], size_t n, double sum[], size_t dataSize) {
     /* 
        Calcoliamo la norma fra un vettore e un centroide
        allora, res contiene i risultati intermedi del calcolo della norma, ovvero i quadrati delle differenze fra coordinate corrispondenti dei vettori
@@ -70,7 +38,7 @@ __global__ void normA(double vect[], double centroids[], double res[], int n, do
        blockIdx.x identifica il cluster, ovvero il centroide con cui fare la norma
        threadIdx.x identifica la coordinata di cui si deve occupare il singolo core
     */
-    printf("Indice res %lu\n",blockIdx.y*n + blockIdx.x*dataSize + threadIdx.x);
+    //printf("Indice res %lu\n",blockIdx.y*n + blockIdx.x*dataSize*n + threadIdx.x);
     res[blockIdx.y*n + blockIdx.x*dataSize*n + threadIdx.x] = pow(vect[blockIdx.y*n + threadIdx.x] - centroids[blockIdx.x*n + threadIdx.x], 2);
     __syncthreads();
     if(threadIdx.x == 0){
@@ -81,23 +49,21 @@ __global__ void normA(double vect[], double centroids[], double res[], int n, do
 }
 
 // dataSize è il numero di vettori, ovvero sizeof(data) / n (sennò aveva davvero poco senso)
-__global__ void kmeanDevice(double S[], int dimS[], int * elemLengthPtr, double totalNormAvg[],  double data[], double centroids[], double res[], double sum[], size_t dataSize, size_t clusterNumber){
-        int n = *elemLengthPtr;
-        
-        int *posMin = new int[dataSize];
-        double *min = new double[dataSize]; //inizializzare a DBL_MAX
+__global__ void kmeanDevice(double S[], int dimS[], size_t n, double totalNormAvg[],  const double data[], double centroids[], double res[], double sum[], size_t dataSize, size_t clusterNumber){
+    int *posMin = new int[dataSize];
+    auto *min = new double[dataSize]; //inizializzare a DBL_MAX
 
-        for (int h = 0; h < dataSize; h++) {// array delle norme. no cuda
-            min[h] = DBL_MAX;
-            posMin[h] = 0;
-        }
+    for (int h = 0; h < dataSize; h++) {// array delle norme. no cuda
+        min[h] = DBL_MAX;
+        posMin[h] = 0;
+    }
 
-        int *filledS = new int[clusterNumber];
-        for (int h = 0; h < clusterNumber; h++) {// array delle norme. no cuda
-            dimS[h] = 0;
-            totalNormAvg[h] = 0;
-            filledS[h] = 0;
-        }
+    int *filledS = new int[clusterNumber];
+    for (int h = 0; h < clusterNumber; h++) {// array delle norme. no cuda
+        dimS[h] = 0;
+        totalNormAvg[h] = 0;
+        filledS[h] = 0;
+    }
 
     //norm(data, means);
     dim3 numBlocks(clusterNumber, dataSize);
@@ -105,54 +71,55 @@ __global__ void kmeanDevice(double S[], int dimS[], int * elemLengthPtr, double 
     normA<<<numBlocks,n>>>(data, centroids, res, n, sum, dataSize);
     cudaDeviceSynchronize();
     for (int v=0; v<dataSize;v++){
-            for (int h = 0; h < clusterNumber; h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
-
-                if (sum[h*dataSize+v] < min[v]) {
-                    min[v] = sum[h*dataSize+v];
-                    posMin[v] = h;
-                }
-            }
-            dimS[posMin[v]] += 1;
-        }
-
-        for (int l = 0; l<dataSize; l++){
-            int targetPosition = 0;
-            for (int i = 0; i < posMin[l]; i++) {
-                targetPosition += dimS[i];
-            }
-            targetPosition += filledS[posMin[l]];
-            for (int k=0;k<n;k++){
-                S[targetPosition*n+k] = data[l*n+k];
-            }
-            filledS[posMin[l]] += 1;
-            totalNormAvg[posMin[l]] = totalNormAvg[posMin[l]] + min[l];
-        }
-
-        for (int i = 0; i < clusterNumber; i++) {
-            if (dimS[i] > 0) {
-                totalNormAvg[i] = totalNormAvg[i] / dimS[i];
+        for (int h = 0; h < clusterNumber; h++) {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
+            if (sum[h*dataSize+v] < min[v]) {
+                min[v] = sum[h*dataSize+v];
+                posMin[v] = h;
             }
         }
+        dimS[posMin[v]] += 1;
+    }
+
+    for (int l = 0; l<dataSize; l++){
+        int targetPosition = 0;
+        for (int i = 0; i < posMin[l]; i++) {
+            targetPosition += dimS[i];
+        }
+        targetPosition += filledS[posMin[l]];
+        for (int k=0;k<n;k++){
+            S[targetPosition*n+k] = data[l*n+k];
+        }
+        filledS[posMin[l]] += 1;
+        totalNormAvg[posMin[l]] = totalNormAvg[posMin[l]] + min[l];
+    }
+
+    for (int i = 0; i < clusterNumber; i++) {
+        if (dimS[i] > 0) {
+            totalNormAvg[i] = totalNormAvg[i] / dimS[i];
+        }
+    }
+    delete[] filledS;
+    delete[] min;
+    delete[] posMin;
 }
 
-__global__ void meanz(double centroids[], double S[], int dimS[], int * elemLengthPtr) {// calcola centroidi
-    int elemLength = *elemLengthPtr;
-    centroids[blockIdx.x*elemLength + threadIdx.x] = 0;
-    int dimSum = 0;
+__global__ void meanz(double centroids[], const double S[], const int dimS[], size_t n) {// calcola centroidi
+    centroids[blockIdx.x * n + threadIdx.x] = 0;
+    size_t dimSum = 0;
     // calcola la coordinata iniziale del primo vettore del cluster blockIdx.x
     for (int j=0; j<blockIdx.x; j++) {
         dimSum += dimS[j];
     }
-    dimSum = dimSum*elemLength;
+    dimSum = dimSum * n;
     // scorre tutti gli elementi del cluster (la grandezza del cluster e' in dimS[blockIdx.x])
     for (int i=0; i<dimS[blockIdx.x]; i++) {
-        dimSum += elemLength;
+        dimSum += n;
         // quindi alla fine in centroids c'e' la somma di tutte le n-esime coordinate di ogni elemento del cluster
-        centroids[blockIdx.x *elemLength + threadIdx.x] = centroids[blockIdx.x *elemLength + threadIdx.x] + S[dimSum + threadIdx.x];
+        centroids[blockIdx.x * n + threadIdx.x] = centroids[blockIdx.x * n + threadIdx.x] + S[dimSum + threadIdx.x];
 
     }
     // divide per la dimensione del cluster per fare la media -> coordinata n-esima del nuovo centroide di questo cluster
-    centroids[blockIdx.x *elemLength + threadIdx.x] = centroids[blockIdx.x *elemLength + threadIdx.x] / dimS[blockIdx.x];
+    centroids[blockIdx.x * n + threadIdx.x] = centroids[blockIdx.x * n + threadIdx.x] / dimS[blockIdx.x];
 }
 
 
@@ -169,8 +136,8 @@ unsigned long parseData(ifstream &csv, vector<double> &data) {
             vector<string> rowArr;
             const char delimiter = ';';
             // evita il primo token, tanto è il nome del primo vettore
-            int start = row.find(delimiter) + 1;
-            int end = row.find(delimiter, start);
+            size_t start = row.find(delimiter) + 1;
+            size_t end = row.find(delimiter, start);
             while (end != -1) {
                 rowArr.push_back(row.substr(start, end - start));
                 start = end + 1; // scansa il ';'
@@ -205,12 +172,9 @@ unsigned long parseData(ifstream &csv, vector<double> &data) {
     }
 
 int main(){
-    double *a, *b, *out;
-    double *d_a, *d_b, *d_out;
     double *res;
     double *sum;
     double *sum_host;
-    double *means;
     double *S;
     double *S_host;
     int *dimS;
@@ -232,21 +196,12 @@ int main(){
     //printf(dataVec.size());
     cout << "n = " << n << "\n";
     cout << "Datavec size: " << dataVec.size() << endl;
-    cout << "Data size: " << ARRAYSIZEOF(data) << endl;
+    cout << "Data size: " << ARRAYSIZEOF(data)/n << endl;
 
     // Allocate host memory
-    a   = (double*)malloc(sizeof(double) * N);
-    b   = (double*)malloc(sizeof(double) * N);
-    out = (double*)malloc(sizeof(double) * N);
     S_host=(double*)malloc(sizeof(double) * dataVec.size());
     dimS_host=(int*)malloc(sizeof(int) * CLUSTER_NUMBER);
     sum_host = (double*)malloc(sizeof(double) * dataVec.size()/n*CLUSTER_NUMBER);
-
-    // Initialize host arrays
-    for(int i = 0; i < N; i++){
-        a[i] = 1.0f;
-        b[i] = 2.0f;
-    }
 
     // Allocate device memory
     cudaMalloc((void**)&res, sizeof(double) * dataVec.size()*CLUSTER_NUMBER);
@@ -258,14 +213,7 @@ int main(){
     cudaMalloc((void**)&centroids, sizeof(double) * CLUSTER_NUMBER*n);
     cudaMalloc((void**)&data_d, sizeof(double) * dataVec.size());
 
-
-    cudaMalloc((void**)&d_a, sizeof(double) * N);
-    cudaMalloc((void**)&d_b, sizeof(double) * N);
-    cudaMalloc((void**)&d_out, sizeof(double) * N);
-
     // Transfer data from host to device memory
-    cudaMemcpy(d_a, a, sizeof(double) * N, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_b, b, sizeof(double) * N, cudaMemcpyHostToDevice);
     cudaMemcpy(data_d, data, sizeof(double) * dataVec.size(), cudaMemcpyHostToDevice);
     cudaMemcpy(elemLength, &n, sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(centroids, data, sizeof(double)*n*CLUSTER_NUMBER, cudaMemcpyHostToDevice); //i primi CLUSTER_NUMBER vettori di data per provare
@@ -273,15 +221,16 @@ int main(){
     // Executing kernel 
     //normA<<<CLUSTER_NUMBER,5>>>(d_a, d_b, res, 5, sum);
 
-    kmeanDevice<<<1,1>>>(S, dimS, elemLength, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
-    //cudaDeviceSynchronize();
-    //meanz<<<CLUSTER_NUMBER, 5>>>(means, S, dimS, elemLength);
-
+    kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
+    cudaDeviceSynchronize();
+//    meanz<<<CLUSTER_NUMBER, 5>>>(centroids, S, dimS, n);
+//    cudaDeviceSynchronize();
+//    kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
+//    cudaDeviceSynchronize();
     // Transfer data back to host memory
-    cudaMemcpy(out, d_out, sizeof(double) * N, cudaMemcpyDeviceToHost);
     cudaMemcpy(S_host, S, sizeof(double) * dataVec.size(), cudaMemcpyDeviceToHost);
-    int index = 1;
-    for(int i = index*n; i<(index+1)*n; i++){
+    size_t index = 1;
+    for(size_t i = index*n; i<(index+1)*n; i++){
         cout << S_host[i] << endl;
     }
     cout << "\n";
@@ -294,20 +243,24 @@ int main(){
     for(int i = 0; i<20; i++){
         cout << sum_host[i] << endl;
     }
-    dim3 numBlocks(CLUSTER_NUMBER, ARRAYSIZEOF(data));
     cout << "Dimensione grid: " << CLUSTER_NUMBER << "x" << ARRAYSIZEOF(data)/n << endl;
 
     // Verification
 
     // Deallocate device memory
-    cudaFree(d_a);
-    cudaFree(d_b);
-    cudaFree(d_out);
+    cudaFree(res);
+    cudaFree(sum);
+    cudaFree(S);
+    cudaFree(dimS);
+    cudaFree(totalNormAvg);
+    cudaFree(elemLength);
+    cudaFree(centroids);
+    cudaFree(data_d);
 
     // Deallocate host memory
-    free(a);
-    free(b);
-    free(out);
+    free(S_host);
+    free(dimS_host);
+    free(sum_host);
 
     cout << "Esecuzione terminata." << endl;
 }
