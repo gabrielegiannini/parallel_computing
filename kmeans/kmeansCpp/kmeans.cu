@@ -1,7 +1,7 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-#include <assert.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#include <cassert>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <thrust/host_vector.h>
@@ -16,7 +16,7 @@
 #include <future>
 #include <filesystem>
 #include <thread>
-#include <float.h>
+#include <cfloat>
 #include <sstream>
 #include <iomanip>
 
@@ -129,28 +129,27 @@ __global__ void meanz(double centroids[], const int S[], const int dimS[], size_
 
 unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &labels) {
         double *domainMax;
-        unsigned long n = -1;
+        unsigned long n = 0;
         int index = 0;
         while (!csv.eof()) {
             string row;
             getline(csv, row);
-            //cout << row << endl;
-            istringstream iss(row);
             // perche ovviamente in c++ string.split() non esiste...
             vector<string> rowArr;
             const char delimiter = ';';
+            //il primo token è il label del vettore
             labels.push_back(row.substr(0, row.find(delimiter)));
-            // evita il primo token, tanto è il nome del primo vettore
+            //i seguenti sono le coordinate
             size_t start = row.find(delimiter) + 1;
             size_t end = row.find(delimiter, start);
-            while (end != -1) {
+            while (end != string::npos) {
                 rowArr.push_back(row.substr(start, end - start));
                 start = end + 1; // scansa il ';'
                 end = row.find(delimiter, start);
             }
             rowArr.push_back(row.substr(start));
 
-            if (n == -1) {
+            if (n == 0) {
                 n = rowArr.size();
                 domainMax = new double[n];
                 for (int i = 0; i < n; i++) {
@@ -230,7 +229,6 @@ int main(){
     myfile.close();
     double data[dataVec.size()];
     std::copy(dataVec.begin(), dataVec.end(), data);
-    //printf(dataVec.size());
     cout << "n = " << n << "\n";
     cout << "Datavec size: " << dataVec.size() << endl;
     cout << "Data size: " << ARRAYSIZEOF(data)/n << endl;
@@ -255,15 +253,14 @@ int main(){
     cudaMemcpy(elemLength, &n, sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(centroids, data, sizeof(double)*n*CLUSTER_NUMBER, cudaMemcpyHostToDevice); //i primi CLUSTER_NUMBER vettori di data per provare
 
-    // Executing kernel 
-    //normA<<<CLUSTER_NUMBER,5>>>(d_a, d_b, res, 5, sum);
-
+    // Executing kernel
     kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
     cudaDeviceSynchronize();
 //    meanz<<<CLUSTER_NUMBER, 5>>>(centroids, S, dimS, n);
 //    cudaDeviceSynchronize();
 //    kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
 //    cudaDeviceSynchronize();
+
     // Transfer data back to host memory
     cudaMemcpy(S_host, S, sizeof(int) * dataVec.size()/n, cudaMemcpyDeviceToHost);
     cudaMemcpy(dimS_host, dimS, sizeof(int) * CLUSTER_NUMBER, cudaMemcpyDeviceToHost);
