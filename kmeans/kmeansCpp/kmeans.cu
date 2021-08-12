@@ -204,6 +204,11 @@ void printClusters(vector<string> &labels, int clusters[], const int dimS[], siz
         table << endl;
     }
     cout << table.str() << endl;
+    // write output on a file
+    ofstream myfile;
+    myfile.open ("output.txt");
+    myfile << table.str();
+    myfile.close();
 }
 
 int main(){
