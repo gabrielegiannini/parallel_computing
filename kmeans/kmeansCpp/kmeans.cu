@@ -69,7 +69,7 @@ __global__ void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[]
 
     //norm(data, means);
     dim3 numBlocks(clusterNumber, dataSize);
-    printf("Sto per fare norm\n");
+    //printf("Sto per fare norm\n");
     normA<<<numBlocks,n>>>(data, centroids, res, n, sum, dataSize);
     cudaDeviceSynchronize();
     for (int v=0; v<dataSize;v++){
@@ -212,6 +212,7 @@ int main(){
     double *sum_host;
     int *S;
     int *S_host;
+    int *S_host_old;
     int *dimS;
     int *dimS_host;
     int *elemLength;
@@ -235,6 +236,7 @@ int main(){
 
     // Allocate host memory
     S_host=(int*)malloc(sizeof(int) * dataVec.size()/n);
+    S_host_old=(int*)malloc(sizeof(int) * dataVec.size()/n);
     dimS_host=(int*)malloc(sizeof(int) * CLUSTER_NUMBER);
     sum_host = (double*)malloc(sizeof(double) * dataVec.size()/n*CLUSTER_NUMBER);
 
@@ -254,15 +256,29 @@ int main(){
     cudaMemcpy(centroids, data, sizeof(double)*n*CLUSTER_NUMBER, cudaMemcpyHostToDevice); //i primi CLUSTER_NUMBER vettori di data per provare
 
     // Executing kernel
-    kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
-    cudaDeviceSynchronize();
-//    meanz<<<CLUSTER_NUMBER, 5>>>(centroids, S, dimS, n);
-//    cudaDeviceSynchronize();
+    bool newClusterDifferent = true;
+    while(newClusterDifferent){
+        kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
+        cudaDeviceSynchronize();
+        meanz<<<CLUSTER_NUMBER, 5>>>(centroids, S, dimS, n);
+        cudaDeviceSynchronize();
+        cudaMemcpy(S_host, S, sizeof(int) * dataVec.size()/n, cudaMemcpyDeviceToHost);
+        for(int i=0;i<dataVec.size()/n;i++){
+            if(S_host[i]!= S_host_old[i]){
+                newClusterDifferent = true;
+                break;
+            }else{
+                newClusterDifferent = false;            }
+        }
+        int *tmp = S_host_old;
+        S_host_old = S_host;
+        S_host = tmp;
+    }
+    
 //    kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
 //    cudaDeviceSynchronize();
 
     // Transfer data back to host memory
-    cudaMemcpy(S_host, S, sizeof(int) * dataVec.size()/n, cudaMemcpyDeviceToHost);
     cudaMemcpy(dimS_host, dimS, sizeof(int) * CLUSTER_NUMBER, cudaMemcpyDeviceToHost);
     cout << "Dimensione grid: " << CLUSTER_NUMBER << "x" << ARRAYSIZEOF(data)/n << endl;
     cout << "Dimensioni dei cluster\n";
