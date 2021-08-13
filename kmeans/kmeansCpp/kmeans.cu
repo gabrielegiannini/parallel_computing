@@ -106,7 +106,7 @@ __global__ void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[]
     delete[] posMin;
 }
 
-__global__ void meanz(double centroids[], const double data[], const int S[], const int dimS[], size_t n) {// calcola centroidi
+__global__ void meanz(double centroids[], const int S[], const int dimS[], size_t n) {// calcola centroidi
     centroids[blockIdx.x * n + threadIdx.x] = 0;
     size_t dimSum = 0;
     // calcola la coordinata iniziale del primo vettore del cluster blockIdx.x
@@ -117,9 +117,9 @@ __global__ void meanz(double centroids[], const double data[], const int S[], co
     // scorre tutti gli elementi del cluster (la grandezza del cluster e' in dimS[blockIdx.x])
     for (int i=0; i<dimS[blockIdx.x]; i++) {
         //dimSum += n;
-        // quindi alla fine in centroids c'e' la somma di tutte le n-esime coordinate di ogni elemento del cluster
-        centroids[blockIdx.x * n + threadIdx.x] = centroids[blockIdx.x * n + threadIdx.x] + data[S[dimSum]*n + threadIdx.x];
         dimSum += 1;
+        // quindi alla fine in centroids c'e' la somma di tutte le n-esime coordinate di ogni elemento del cluster
+        centroids[blockIdx.x * n + threadIdx.x] = centroids[blockIdx.x * n + threadIdx.x] + S[dimSum + threadIdx.x];
 
     }
     // divide per la dimensione del cluster per fare la media -> coordinata n-esima del nuovo centroide di questo cluster
@@ -234,6 +234,7 @@ int main(){
     unsigned long n = parseData(myfile, dataVec, dataLabel);
     myfile.close();
     double data[dataVec.size()];
+    double centroidInit[CLUSTER_NUMBER*n];
     std::copy(dataVec.begin(), dataVec.end(), data);
     cout << "n = " << n << "\n";
     cout << "Datavec size: " << dataVec.size() << endl;
@@ -258,15 +259,24 @@ int main(){
     // Transfer data from host to device memory
     cudaMemcpy(data_d, data, sizeof(double) * dataVec.size(), cudaMemcpyHostToDevice);
     cudaMemcpy(elemLength, &n, sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(centroids, data, sizeof(double)*n*CLUSTER_NUMBER, cudaMemcpyHostToDevice); //i primi CLUSTER_NUMBER vettori di data per provare
+
+    //init cluster picking random arrays from data
+    for (int i=0; i < CLUSTER_NUMBER ; i++){
+        int randomDataPos = rand() % (dataVec.size()/n)-1;
+        cout << "random num: ";
+        cout << randomDataPos << endl;
+        for(int j=0; j<n;j++){
+            centroidInit[i+j] = data[randomDataPos + j];
+        }
+    }
+    cudaMemcpy(centroids, centroidInit, sizeof(double)*n*CLUSTER_NUMBER, cudaMemcpyHostToDevice); //i vettori inizializzati nel for prima
 
     // Executing kernel
-    size_t iterazioni = 0;
     bool newClusterDifferent = true;
     while(newClusterDifferent){
         kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
         cudaDeviceSynchronize();
-        meanz<<<CLUSTER_NUMBER, n>>>(centroids, data_d, S, dimS, n);
+        meanz<<<CLUSTER_NUMBER, 5>>>(centroids, S, dimS, n);
         cudaDeviceSynchronize();
         cudaMemcpy(S_host, S, sizeof(int) * dataVec.size()/n, cudaMemcpyDeviceToHost);
         for(int i=0;i<dataVec.size()/n;i++){
@@ -279,16 +289,12 @@ int main(){
         int *tmp = S_host_old;
         S_host_old = S_host;
         S_host = tmp;
-        iterazioni++;
     }
     
 //    kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
 //    cudaDeviceSynchronize();
-//    meanz<<<CLUSTER_NUMBER, n>>>(centroids, data_d, S, dimS, n);
-//    cudaDeviceSynchronize();
 
     // Transfer data back to host memory
-    cudaMemcpy(S_host, S, sizeof(int) * dataVec.size()/n, cudaMemcpyDeviceToHost);
     cudaMemcpy(dimS_host, dimS, sizeof(int) * CLUSTER_NUMBER, cudaMemcpyDeviceToHost);
     cout << "Dimensione grid: " << CLUSTER_NUMBER << "x" << ARRAYSIZEOF(data)/n << endl;
     cout << "Dimensioni dei cluster\n";
@@ -296,7 +302,7 @@ int main(){
         cout << dimS_host[i] << endl;
     }
     cout << "\n";
-    printClusters(dataLabel, S_host, dimS_host, CLUSTER_NUMBER, ARRAYSIZEOF(data)/n);
+    //printClusters(dataLabel, S_host, dimS_host, CLUSTER_NUMBER, ARRAYSIZEOF(data)/n);
 
     // Verification
 
@@ -312,11 +318,10 @@ int main(){
 
     // Deallocate host memory
     free(S_host);
-    free(S_host_old);
     free(dimS_host);
     free(sum_host);
 
-    cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
+    cout << "Esecuzione terminata." << endl;
 }
 
 
