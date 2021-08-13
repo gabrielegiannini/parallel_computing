@@ -262,11 +262,11 @@ int main(){
 
     //init cluster picking random arrays from data
     for (int i=0; i < CLUSTER_NUMBER ; i++){
-        int randomDataPos = rand() % (dataVec.size()/n)-1;
+        size_t randomDataPos = rand() % ((dataVec.size()/n)-1);
         cout << "random num: ";
         cout << randomDataPos << endl;
         for(int j=0; j<n;j++){
-            centroidInit[i+j] = data[randomDataPos + j];
+            centroidInit[i*n+j] = data[randomDataPos*n + j];
         }
     }
     cudaMemcpy(centroids, centroidInit, sizeof(double)*n*CLUSTER_NUMBER, cudaMemcpyHostToDevice); //i vettori inizializzati nel for prima
