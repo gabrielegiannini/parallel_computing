@@ -24,10 +24,7 @@ namespace fs = std::filesystem;
 
 using namespace std;
 
-#define N 10000000
-#define MAX_ERR 1e-6
-
-#define CLUSTER_NUMBER 5
+#define DEFAULT_CLUSTER_NUMBER 5
 #define ARRAYSIZEOF(ptr) (sizeof(ptr)/sizeof(ptr[0]))
 
 __global__ void normA(const double vect[], const double centroids[], double res[], size_t n, double sum[], size_t dataSize) {
@@ -175,7 +172,7 @@ unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &lab
         return n;
     }
 
-void printClusters(vector<string> &labels, int clusters[], const int dimS[], size_t clusterNumber, size_t dataSize) {
+string formatClusters(vector<string> &labels, int clusters[], const int dimS[], size_t clusterNumber, size_t dataSize) {
     //string table = "Cluster:\n\n";
     ostringstream table;
     size_t width = min(max(labels[0].length()*5/2, 6lu), 20lu);
@@ -203,84 +200,92 @@ void printClusters(vector<string> &labels, int clusters[], const int dimS[], siz
         }
         table << endl;
     }
-    cout << table.str() << endl;
-    // write output on a file
-    ofstream myfile;
-    myfile.open ("output.txt");
-    myfile << table.str();
-    myfile.close();
+    return table.str();
 }
 
-int main(){
+int main(int argc, char* argv[]){
     double *res;
     double *sum;
-    double *sum_host;
     int *S;
     int *S_host;
     int *S_host_old;
     int *dimS;
     int *dimS_host;
-    int *elemLength;
     double *totalNormAvg;
     double *centroids;
     double *data_d;
 
+    int cluster_number = DEFAULT_CLUSTER_NUMBER;
+    string target_file = "../../test_reale.csv";
+    string output_file = "output.txt";
+    bool print = false;
+
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp("-f", argv[i]) || !strcmp("--file", argv[i])) {
+            target_file = argv[++i];
+        } else if (!strcmp("-c", argv[i]) || !strcmp("--clusters", argv[i])) {
+            cluster_number = stoi(argv[++i]);
+        } else if (!strcmp("-o", argv[i]) || !strcmp("--output", argv[i])) {
+            output_file = argv[++i];
+        } else if (!strcmp("-p", argv[i]) || !strcmp("--print", argv[i])) {
+            print = true;
+        }
+    }
+
     vector<double> dataVec(0);
     vector<string> dataLabel(0);
-    //vector<double> totalNormAvg(CLUSTER_NUMBER);
+    //vector<double> totalNormAvg(DEFAULT_CLUSTER_NUMBER);
     ifstream myfile;
 //    myfile.open("../../datasetProva.csv");
-    myfile.open("../../test_reale.csv");
+    myfile.open(target_file);
     unsigned long n = parseData(myfile, dataVec, dataLabel);
     myfile.close();
     double data[dataVec.size()];
-    double centroidInit[CLUSTER_NUMBER*n];
+    double centroidInit[cluster_number*n];
     std::copy(dataVec.begin(), dataVec.end(), data);
-    cout << "n = " << n << "\n";
-    cout << "Datavec size: " << dataVec.size() << endl;
-    cout << "Data size: " << ARRAYSIZEOF(data)/n << endl;
+    size_t element_count = dataVec.size() / n;
+    cout << "Data element number: " << element_count << "\n";
+    cout << "Clusters number: " << cluster_number << "\n";
+    cout << "Element dimensions (n) = " << n << endl;
 
     // Allocate host memory
-    S_host=(int*)malloc(sizeof(int) * dataVec.size()/n);
-    S_host_old=(int*)malloc(sizeof(int) * dataVec.size()/n);
-    dimS_host=(int*)malloc(sizeof(int) * CLUSTER_NUMBER);
-    sum_host = (double*)malloc(sizeof(double) * dataVec.size()/n*CLUSTER_NUMBER);
+    S_host = new int[element_count];
+    S_host_old = new int[element_count];
+    dimS_host = new int[cluster_number];
 
     // Allocate device memory
-    cudaMalloc((void**)&res, sizeof(double) * dataVec.size()*CLUSTER_NUMBER);
-    cudaMalloc((void**)&sum, sizeof(double) * dataVec.size()/n*CLUSTER_NUMBER);
-    cudaMalloc((void**)&S, sizeof(int) * dataVec.size()/n);
-    cudaMalloc((void**)&dimS, sizeof(double) * CLUSTER_NUMBER);
-    cudaMalloc((void**)&totalNormAvg, sizeof(double) * CLUSTER_NUMBER);
-    cudaMalloc((void**)&elemLength, sizeof(int));
-    cudaMalloc((void**)&centroids, sizeof(double) * CLUSTER_NUMBER*n);
+    cudaMalloc((void**)&res, sizeof(double) * dataVec.size()*cluster_number);
+    cudaMalloc((void**)&sum, sizeof(double) * element_count*cluster_number);
+    cudaMalloc((void**)&S, sizeof(int) * element_count);
+    cudaMalloc((void**)&dimS, sizeof(double) * cluster_number);
+    cudaMalloc((void**)&totalNormAvg, sizeof(double) * cluster_number);
+    cudaMalloc((void**)&centroids, sizeof(double) * cluster_number*n);
     cudaMalloc((void**)&data_d, sizeof(double) * dataVec.size());
 
     // Transfer data from host to device memory
     cudaMemcpy(data_d, data, sizeof(double) * dataVec.size(), cudaMemcpyHostToDevice);
-    cudaMemcpy(elemLength, &n, sizeof(int), cudaMemcpyHostToDevice);
 
     //init cluster picking random arrays from data
-    for (int i=0; i < CLUSTER_NUMBER ; i++){
-        size_t randomDataPos = rand() % ((dataVec.size()/n)-1);
-        cout << "random num: ";
-        cout << randomDataPos << endl;
+    for (int i=0; i < cluster_number ; i++){
+        size_t randomDataPos = rand() % (element_count-1);
+//        cout << "random num: ";
+//        cout << randomDataPos << endl;
         for(int j=0; j<n;j++){
             centroidInit[i*n+j] = data[randomDataPos*n + j];
         }
     }
-    cudaMemcpy(centroids, centroidInit, sizeof(double)*n*CLUSTER_NUMBER, cudaMemcpyHostToDevice); //i vettori inizializzati nel for prima
+    cudaMemcpy(centroids, centroidInit, sizeof(double)*n*cluster_number, cudaMemcpyHostToDevice); //i vettori inizializzati nel for prima
 
     // Executing kernel
     size_t iterazioni = 0;
     bool newClusterDifferent = true;
     while(newClusterDifferent){
-        kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
+        kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, element_count, cluster_number);
         cudaDeviceSynchronize();
-        meanz<<<CLUSTER_NUMBER, n>>>(centroids, data_d, S, dimS, n);
+        meanz<<<cluster_number, n>>>(centroids, data_d, S, dimS, n);
         cudaDeviceSynchronize();
-        cudaMemcpy(S_host, S, sizeof(int) * dataVec.size()/n, cudaMemcpyDeviceToHost);
-        for(int i=0;i<dataVec.size()/n;i++){
+        cudaMemcpy(S_host, S, sizeof(int) * element_count, cudaMemcpyDeviceToHost);
+        for(int i=0;i<element_count;i++){
             if(S_host[i]!= S_host_old[i]){
                 newClusterDifferent = true;
                 break;
@@ -293,21 +298,31 @@ int main(){
         iterazioni++;
     }
     
-//    kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, CLUSTER_NUMBER);
+//    kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, ARRAYSIZEOF(data)/n, DEFAULT_CLUSTER_NUMBER);
 //    cudaDeviceSynchronize();
-//    meanz<<<CLUSTER_NUMBER, n>>>(centroids, data_d, S, dimS, n);
+//    meanz<<<DEFAULT_CLUSTER_NUMBER, n>>>(centroids, data_d, S, dimS, n);
 //    cudaDeviceSynchronize();
 
     // Transfer data back to host memory
-    cudaMemcpy(S_host, S, sizeof(int) * dataVec.size()/n, cudaMemcpyDeviceToHost);
-    cudaMemcpy(dimS_host, dimS, sizeof(int) * CLUSTER_NUMBER, cudaMemcpyDeviceToHost);
-    cout << "Dimensione grid: " << CLUSTER_NUMBER << "x" << ARRAYSIZEOF(data)/n << endl;
+    cudaMemcpy(S_host, S, sizeof(int) * element_count, cudaMemcpyDeviceToHost);
+    cudaMemcpy(dimS_host, dimS, sizeof(int) * cluster_number, cudaMemcpyDeviceToHost);
+    cout << "Dimensione grid: " << cluster_number << "x" << element_count << endl;
     cout << "Dimensioni dei cluster\n";
-    for(int i = 0; i<CLUSTER_NUMBER; i++){
+    for(int i = 0; i<cluster_number; i++){
         cout << dimS_host[i] << endl;
     }
     cout << "\n";
-    //printClusters(dataLabel, S_host, dimS_host, CLUSTER_NUMBER, ARRAYSIZEOF(data)/n);
+
+
+    string output = formatClusters(dataLabel, S_host, dimS_host, cluster_number, element_count);
+    // write output on a file
+    ofstream out_file;
+    out_file.open(output_file);
+    out_file << output << endl;
+    out_file.close();
+    if (print) {
+        cout << output;
+    }
 
     // Verification
 
@@ -317,15 +332,13 @@ int main(){
     cudaFree(S);
     cudaFree(dimS);
     cudaFree(totalNormAvg);
-    cudaFree(elemLength);
     cudaFree(centroids);
     cudaFree(data_d);
 
     // Deallocate host memory
-    free(S_host);
-    free(S_host_old);
-    free(dimS_host);
-    free(sum_host);
+    delete[] S_host;
+    delete[] S_host_old;
+    delete[] dimS_host;
 
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
 }
