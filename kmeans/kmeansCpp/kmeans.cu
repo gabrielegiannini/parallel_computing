@@ -26,8 +26,24 @@ using namespace std;
 
 #define DEFAULT_CLUSTER_NUMBER 5
 #define ARRAYSIZEOF(ptr) (sizeof(ptr)/sizeof(ptr[0]))
+static void CheckCudaErrorAux(const char *, unsigned, const char *,
+                              cudaError_t);
+#define CUDA_CHECK_RETURN(value) CheckCudaErrorAux(__FILE__,__LINE__, #value, value)
 
-__global__ void normA(const double vect[], const double centroids[], double res[], size_t n, double sum[], size_t dataSize) {
+/**
+ * Check the return value of the CUDA runtime API call and exit
+ * the application if the call has failed.
+ */
+static void CheckCudaErrorAux(const char *file, unsigned line,
+                              const char *statement, cudaError_t err) {
+    if (err == cudaSuccess)
+        return;
+    std::cerr << statement << " returned " << cudaGetErrorString(err) << "("
+    << err << ") at " << file << ":" << line << std::endl;
+    exit(1);
+}
+
+__global__ void normA(const double vect[], const double centroids[], double res[], const  size_t n, double sum[], const size_t dataSize) {
     /* 
        Calcoliamo la norma fra un vettore e un centroide
        allora, res contiene i risultati intermedi del calcolo della norma, ovvero i quadrati delle differenze fra coordinate corrispondenti dei vettori
@@ -123,54 +139,53 @@ __global__ void meanz(double centroids[], const double data[], const int S[], co
     centroids[blockIdx.x * n + threadIdx.x] = centroids[blockIdx.x * n + threadIdx.x] / dimS[blockIdx.x];
 }
 
-
 unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &labels) {
-        double *domainMax;
-        unsigned long n = 0;
-        int index = 0;
-        while (!csv.eof()) {
-            string row;
-            getline(csv, row);
-            // perche ovviamente in c++ string.split() non esiste...
-            vector<string> rowArr;
-            const char delimiter = ';';
-            //il primo token è il label del vettore
-            labels.push_back(row.substr(0, row.find(delimiter)));
-            //i seguenti sono le coordinate
-            size_t start = row.find(delimiter) + 1;
-            size_t end = row.find(delimiter, start);
-            while (end != string::npos) {
-                rowArr.push_back(row.substr(start, end - start));
-                start = end + 1; // scansa il ';'
-                end = row.find(delimiter, start);
-            }
-            rowArr.push_back(row.substr(start));
+    double *domainMax;
+    unsigned long n = 0;
+    int index = 0;
+    while (!csv.eof()) {
+        string row;
+        getline(csv, row);
+        // perche ovviamente in c++ string.split() non esiste...
+        vector<string> rowArr;
+        const char delimiter = ';';
+        //il primo token è il label del vettore
+        labels.push_back(row.substr(0, row.find(delimiter)));
+        //i seguenti sono le coordinate
+        size_t start = row.find(delimiter) + 1;
+        size_t end = row.find(delimiter, start);
+        while (end != string::npos) {
+            rowArr.push_back(row.substr(start, end - start));
+            start = end + 1; // scansa il ';'
+            end = row.find(delimiter, start);
+        }
+        rowArr.push_back(row.substr(start));
 
-            if (n == 0) {
-                n = rowArr.size();
-                domainMax = new double[n];
-                for (int i = 0; i < n; i++) {
-                    domainMax[i] = std::numeric_limits<double>::lowest();
-                }
+        if (n == 0) {
+            n = rowArr.size();
+            domainMax = new double[n];
+            for (int i = 0; i < n; i++) {
+                domainMax[i] = std::numeric_limits<double>::lowest();
             }
-            if (n == rowArr.size())
+        }
+        if (n == rowArr.size())
+        {
+            for (int i = 0; i < n; i++)
             {
-                for (int i = 0; i < n; i++)
+                data.push_back(stod(rowArr[i]));
+                if (data[index] > domainMax[i])
                 {
-                    data.push_back(stod(rowArr[i]));
-                    if (data[index] > domainMax[i])
-                    {
-                        domainMax[i] = data[index];
-                    }
-                    index++;
+                    domainMax[i] = data[index];
                 }
+                index++;
             }
         }
-        for(int j=0; j<data.size(); j++) {
-            data[j] = data[j] / domainMax[j%n]; // normalizza i dati -> tutto è adesso fra 0 e 1
-        }
-        return n;
     }
+    for(int j=0; j<data.size(); j++) {
+        data[j] = data[j] / domainMax[j%n]; // normalizza i dati -> tutto è adesso fra 0 e 1
+    }
+    return n;
+}
 
 string formatClusters(vector<string> &labels, int clusters[], const int dimS[], size_t clusterNumber, size_t dataSize) {
     //string table = "Cluster:\n\n";
@@ -229,6 +244,8 @@ int main(int argc, char* argv[]){
             output_file = argv[++i];
         } else if (!strcmp("-p", argv[i]) || !strcmp("--print", argv[i])) {
             print = true;
+        } else {
+            cerr << "Unrecognized option '" << argv[i] << "' skipped\n";
         }
     }
 
@@ -243,7 +260,7 @@ int main(int argc, char* argv[]){
     double data[dataVec.size()];
     double centroidInit[cluster_number*n];
     std::copy(dataVec.begin(), dataVec.end(), data);
-    size_t element_count = dataVec.size() / n;
+    size_t element_count = dataLabel.size();
     cout << "Data element number: " << element_count << "\n";
     cout << "Clusters number: " << cluster_number << "\n";
     cout << "Element dimensions (n) = " << n << endl;
@@ -254,16 +271,16 @@ int main(int argc, char* argv[]){
     dimS_host = new int[cluster_number];
 
     // Allocate device memory
-    cudaMalloc((void**)&res, sizeof(double) * dataVec.size()*cluster_number);
-    cudaMalloc((void**)&sum, sizeof(double) * element_count*cluster_number);
-    cudaMalloc((void**)&S, sizeof(int) * element_count);
-    cudaMalloc((void**)&dimS, sizeof(double) * cluster_number);
-    cudaMalloc((void**)&totalNormAvg, sizeof(double) * cluster_number);
-    cudaMalloc((void**)&centroids, sizeof(double) * cluster_number*n);
-    cudaMalloc((void**)&data_d, sizeof(double) * dataVec.size());
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&res, sizeof(double) * dataVec.size()*cluster_number));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&sum, sizeof(double) * element_count*cluster_number));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&S, sizeof(int) * element_count));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&dimS, sizeof(double) * cluster_number));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&totalNormAvg, sizeof(double) * cluster_number));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&centroids, sizeof(double) * cluster_number*n));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&data_d, sizeof(double) * dataVec.size()));
 
     // Transfer data from host to device memory
-    cudaMemcpy(data_d, data, sizeof(double) * dataVec.size(), cudaMemcpyHostToDevice);
+    CUDA_CHECK_RETURN(cudaMemcpy(data_d, data, sizeof(double) * dataVec.size(), cudaMemcpyHostToDevice));
 
     //init cluster picking random arrays from data
     for (int i=0; i < cluster_number ; i++){
@@ -274,17 +291,17 @@ int main(int argc, char* argv[]){
             centroidInit[i*n+j] = data[randomDataPos*n + j];
         }
     }
-    cudaMemcpy(centroids, centroidInit, sizeof(double)*n*cluster_number, cudaMemcpyHostToDevice); //i vettori inizializzati nel for prima
+    CUDA_CHECK_RETURN(cudaMemcpy(centroids, centroidInit, sizeof(double)*n*cluster_number, cudaMemcpyHostToDevice)); //i vettori inizializzati nel for prima
 
     // Executing kernel
     size_t iterazioni = 0;
     bool newClusterDifferent = true;
     while(newClusterDifferent){
         kmeanDevice<<<1,1>>>(S, dimS, n, totalNormAvg,  data_d, centroids, res, sum, element_count, cluster_number);
-        cudaDeviceSynchronize();
+        CUDA_CHECK_RETURN(cudaDeviceSynchronize());
         meanz<<<cluster_number, n>>>(centroids, data_d, S, dimS, n);
-        cudaDeviceSynchronize();
-        cudaMemcpy(S_host, S, sizeof(int) * element_count, cudaMemcpyDeviceToHost);
+        CUDA_CHECK_RETURN(cudaDeviceSynchronize());
+        CUDA_CHECK_RETURN(cudaMemcpy(S_host, S, sizeof(int) * element_count, cudaMemcpyDeviceToHost));
         for(int i=0;i<element_count;i++){
             if(S_host[i]!= S_host_old[i]){
                 newClusterDifferent = true;
@@ -304,8 +321,8 @@ int main(int argc, char* argv[]){
 //    cudaDeviceSynchronize();
 
     // Transfer data back to host memory
-    cudaMemcpy(S_host, S, sizeof(int) * element_count, cudaMemcpyDeviceToHost);
-    cudaMemcpy(dimS_host, dimS, sizeof(int) * cluster_number, cudaMemcpyDeviceToHost);
+    CUDA_CHECK_RETURN(cudaMemcpy(S_host, S, sizeof(int) * element_count, cudaMemcpyDeviceToHost));
+    CUDA_CHECK_RETURN(cudaMemcpy(dimS_host, dimS, sizeof(int) * cluster_number, cudaMemcpyDeviceToHost));
     cout << "Dimensione grid: " << cluster_number << "x" << element_count << endl;
     cout << "Dimensioni dei cluster\n";
     for(int i = 0; i<cluster_number; i++){
