@@ -47,8 +47,7 @@ static void CheckCudaErrorAux(const char *file, unsigned line,
     exit(1);
 }
 
-__global__ void
-normA(const double vect[], const double centroids[], double res[], const size_t n, double sum[], const size_t dataSize,
+__global__ void normA(const double vect[], const double centroids[], double res[], const size_t n, double sum[], const size_t dataSize,
       int kmeanIndex, const size_t clusterNumber)
 {
     /* 
@@ -76,8 +75,7 @@ normA(const double vect[], const double centroids[], double res[], const size_t 
     }
 }
 
-__global__ void
-meanz(double centroids[], const double data[], const int S[], const int dimS[], size_t n, int kmeanIndex,
+__global__ void meanz(double centroids[], const double data[], const int S[], const int dimS[], size_t n, int kmeanIndex,
       size_t clusterNumber, int dataSize)
 {// calcola centroidi
     centroids[blockIdx.x * n + threadIdx.x + kmeanIndex * n * clusterNumber] = 0;
@@ -378,12 +376,24 @@ int main(int argc, char *argv[])
                        cudaMemcpyHostToDevice)); //i vettori inizializzati nel for prima
 
     // Executing kernel
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
     size_t iterazioni = 0;
     double minAvgNorm = DBL_MAX;
+    float milliseconds = 0;
     while (totalRuns > 0)
     {
-        kmeanDevice<<<1, numberOfConcurrentKmeans>>>(S, dimS, n, totalNormAvg, data_d, centroids, res, sum,
-                                                     element_count, cluster_number);
+        cudaEventRecord(start);
+        kmeanDevice<<<1, numberOfConcurrentKmeans>>>(S, dimS, n, totalNormAvg, data_d, centroids, res, sum, element_count, cluster_number);
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        float millisecondsTmp;
+        cudaEventElapsedTime(&millisecondsTmp, start, stop);
+        milliseconds = milliseconds + millisecondsTmp;
+        //cout << "The elapsed time in gpu was: " << milliseconds << "ms." << endl;
+                                                     
         CUDA_CHECK_RETURN(cudaDeviceSynchronize());
         CUDA_CHECK_RETURN(
                 cudaMemcpy(S_host, S, sizeof(int) * element_count * numberOfConcurrentKmeans, cudaMemcpyDeviceToHost));
@@ -465,6 +475,11 @@ int main(int argc, char *argv[])
     delete[] totalNormAvg_host;
 
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
+    cout <<""<< endl;
+    cout << "Tempo di esecuzione funzioni kernel: " << milliseconds/1000 << "s" << endl;
+    cout << "   -tempo di esecuzione funzione normA: " << iterazioni << " iterazioni." << endl;
+    cout << "   -tempo di esecuzione funzione meanz: " << iterazioni << " iterazioni." << endl;
+    cout <<""<< endl;
 }
 
 
