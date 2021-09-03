@@ -137,12 +137,12 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
     dim3 numBlocks(clusterNumber, dataSize);
     //printf("Sto per fare norm\n");
     int dimensions = n;
-    while (dimensions > 32) {
-        dimensions-=32;
-        normA<<<numBlocks, 32>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, 32);
+    while (dimensions > 2) {
+        dimensions-=2;
+        normA<<<numBlocks, 2>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, dimensions);
         cudaDeviceSynchronize();
     }
-    normA<<<numBlocks, dimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, dimensions);
+    normA<<<numBlocks, dimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, 0);
     cudaDeviceSynchronize();
     for (int v = 0; v < dataSize; v++)
     {
@@ -353,6 +353,9 @@ int main(int argc, char *argv[])
     double centroidInit[cluster_number * n * numberOfConcurrentKmeans];
     std::copy(dataVec.begin(), dataVec.end(), data);
     size_t element_count = dataLabel.size();
+    for(string elem: dataLabel){
+        cout << elem << endl;
+    }
     cout << "Data element number: " << element_count << "\n";
     cout << "Clusters number: " << cluster_number << "\n";
     cout << "Element dimensions (n) = " << n << endl;
@@ -390,22 +393,22 @@ int main(int argc, char *argv[])
                        cudaMemcpyHostToDevice)); //i vettori inizializzati nel for prima
 
     // Executing kernel
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    // cudaEvent_t start, stop;
+    // cudaEventCreate(&start);
+    // cudaEventCreate(&stop);
 
     size_t iterazioni = 0;
     double minAvgNorm = DBL_MAX;
     float milliseconds = 0;
     while (totalRuns > 0)
     {
-        cudaEventRecord(start);
+        // cudaEventRecord(start);
         kmeanDevice<<<1, numberOfConcurrentKmeans>>>(S, dimS, n, totalNormAvg, data_d, centroids, res, sum, element_count, cluster_number);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        float millisecondsTmp;
-        cudaEventElapsedTime(&millisecondsTmp, start, stop);
-        milliseconds = milliseconds + millisecondsTmp;
+        // cudaEventRecord(stop);
+        // cudaEventSynchronize(stop);
+        // float millisecondsTmp;
+        // cudaEventElapsedTime(&millisecondsTmp, start, stop);
+        //milliseconds = milliseconds + millisecondsTmp;
         //cout << "The elapsed time in gpu was: " << milliseconds << "ms." << endl;
                                                      
         CUDA_CHECK_RETURN(cudaDeviceSynchronize());
@@ -487,6 +490,11 @@ int main(int argc, char *argv[])
     delete[] dimS_host;
     delete[] bestS;
     delete[] totalNormAvg_host;
+
+    size_t free, total;
+printf("\n");
+cudaMemGetInfo(&free,&total);   
+printf("%d KB free of total %d KB\n",free/1024,total/1024);
 
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
     cout <<""<< endl;
