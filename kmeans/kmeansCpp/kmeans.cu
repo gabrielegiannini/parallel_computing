@@ -20,6 +20,8 @@
 #include <sstream>
 #include <iomanip>
 #include <ctime>
+#include <algorithm>
+#include <cctype>
 
 namespace fs = std::filesystem;
 
@@ -62,7 +64,7 @@ __global__ void normA(const double vect[], const double centroids[], double res[
     //printf("Indice res %lu\n",blockIdx.y*n + blockIdx.x*dataSize*n + threadIdx.x);
     // cudaMalloc((void **) &centroids, sizeof(double) * cluster_number * n * numberOfConcurrentKmeans)
     int trueIndex = warpWindow + threadIdx.x;
-    printf("Grappa: %lu %i %i %i %i\n", blockIdx.y * n + blockIdx.x * dataSize * n + trueIndex + kmeanIndex * dataSize * n * clusterNumber,blockIdx.x, blockIdx.y,trueIndex,kmeanIndex );
+    //printf("Grappa: %lu %i %i %i %i\n", blockIdx.y * n + blockIdx.x * dataSize * n + trueIndex + kmeanIndex * dataSize * n * clusterNumber,blockIdx.x, blockIdx.y,trueIndex,kmeanIndex );
     res[blockIdx.y * n + blockIdx.x * dataSize * n + trueIndex + kmeanIndex * dataSize * n * clusterNumber] = pow(
             vect[blockIdx.y * n + trueIndex] -
             centroids[blockIdx.x * n + trueIndex + kmeanIndex * n * clusterNumber], 2);
@@ -137,9 +139,9 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
     dim3 numBlocks(clusterNumber, dataSize);
     //printf("Sto per fare norm\n");
     int dimensions = n;
-    while (dimensions > 2) {
-        dimensions-=2;
-        normA<<<numBlocks, 2>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, dimensions);
+    while (dimensions > 1024) {
+        dimensions-=1024;
+        normA<<<numBlocks, 1024>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, dimensions);
         cudaDeviceSynchronize();
     }
     normA<<<numBlocks, dimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, 0);
@@ -190,6 +192,13 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
     delete[] posMin;
 }
 
+bool isNullOrWhitespace(const std::string& str) {
+        return str.empty()
+            || std::all_of(str.begin(), str.end(), [](char c) {
+            return std::isspace(static_cast<unsigned char>(c));
+        });
+    }
+
 unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &labels)
 {
     double *domainMax;
@@ -199,6 +208,7 @@ unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &lab
     {
         string row;
         getline(csv, row);
+        if(isNullOrWhitespace(row)) continue; // ignore blank lines
         // perche ovviamente in c++ string.split() non esiste...
         vector<string> rowArr;
         const char delimiter = ';';
@@ -490,11 +500,6 @@ int main(int argc, char *argv[])
     delete[] dimS_host;
     delete[] bestS;
     delete[] totalNormAvg_host;
-
-    size_t free, total;
-printf("\n");
-cudaMemGetInfo(&free,&total);   
-printf("%d KB free of total %d KB\n",free/1024,total/1024);
 
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
     cout <<""<< endl;
