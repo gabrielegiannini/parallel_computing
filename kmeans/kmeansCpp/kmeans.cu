@@ -50,7 +50,7 @@ static void CheckCudaErrorAux(const char *file, unsigned line,
 }
 
 __global__ void normA(const double vect[], const double centroids[], double res[], const size_t n, double sum[], const size_t dataSize,
-      int kmeanIndex, const size_t clusterNumber, const int warpWindow)
+      int kmeanIndex, const size_t clusterNumber, const int vectorsPerThread, const uint blockOffset)
 {
     /* 
        Calcoliamo la norma fra un vettore e un centroide
@@ -62,26 +62,23 @@ __global__ void normA(const double vect[], const double centroids[], double res[
        threadIdx.x identifica la coordinata di cui si deve occupare il singolo core
     */
     //printf("Indice res %lu\n",blockIdx.y*n + blockIdx.x*dataSize*n + threadIdx.x);
-    // cudaMalloc((void **) &centroids, sizeof(double) * cluster_number * n * numberOfConcurrentKmeans)
-    uint trueIndex = warpWindow + threadIdx.x;
+    // trueIndex = il vettore sul quale deve operare questo thread
+    uint trueIndex = (blockOffset + blockIdx.x) * vectorsPerThread + threadIdx.y;
     //printf("Grappa: %lu %i %i %i %i\n", blockIdx.y * n + blockIdx.x * dataSize * n + trueIndex + kmeanIndex * dataSize * n * clusterNumber,blockIdx.x, blockIdx.y,trueIndex,kmeanIndex );
-    res[threadIdx.y * n + threadIdx.z * dataSize * n + trueIndex + kmeanIndex * dataSize * n * clusterNumber] = pow(
-            vect[threadIdx.y * n + trueIndex] -
-            centroids[threadIdx.z * n + trueIndex + kmeanIndex * n * clusterNumber], 2);
+    res[trueIndex * n + threadIdx.x * dataSize * n + threadIdx.z + kmeanIndex * dataSize * n * clusterNumber] = pow(
+            vect[trueIndex * n + threadIdx.z] -
+            centroids[threadIdx.x * n + threadIdx.z + kmeanIndex * n * clusterNumber], 2);
     //printf("res ok \n");
-    //__syncthreads();
-    __threadfence();
-    if (threadIdx.x == 0)
+    __syncthreads();
+    //__threadfence();
+    if (threadIdx.z == 0)
     {
-        // cudaMalloc((void **) &sum, sizeof(double) * element_count * cluster_number * numberOfConcurrentKmeans)
-        if(warpWindow == 0) {
-            sum[threadIdx.z * dataSize + threadIdx.y + kmeanIndex * dataSize * clusterNumber] = 0;
-        }
+        sum[threadIdx.x * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] = 0;
         for (int i = 0; i < n; i++)
         {
-            sum[threadIdx.z * dataSize + blockIdx.y + kmeanIndex * dataSize * clusterNumber] =
-                    sum[threadIdx.z * dataSize + threadIdx.y + kmeanIndex * dataSize * clusterNumber] +
-                    res[threadIdx.y * n + threadIdx.z * dataSize * n + i + kmeanIndex * dataSize * n * clusterNumber];
+            sum[threadIdx.x * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] =
+                    sum[threadIdx.x * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] +
+                    res[trueIndex * n + threadIdx.x * dataSize * n + i + kmeanIndex * dataSize * n * clusterNumber];
         }
     }
 }
@@ -139,16 +136,22 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
     //norm(data, means);
     int totalThreads = clusterNumber * dataSize * n;
     // dim3 numBlocks(clusterNumber, dataSize);
-    int blockNum = __double2int_ru(totalThreads / 1024.0);
+    int blockNum = __double2int_rd(totalThreads / 1024.0);
     //printf("Sto per fare norm\n");
     const int dimensions = __double2int_rd(1024.0 / clusterNumber / n);
     dim3 blockDimensions(clusterNumber, dimensions, n);
-    while (totalThreads > dimensions) {
-        totalThreads-=dimensions;
-        normA<<<1, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, totalThreads);
-        cudaDeviceSynchronize();
+//    while (totalThreads > dimensions) {
+//        totalThreads-=dimensions;
+//        normA<<<1, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, totalThreads);
+//        cudaDeviceSynchronize();
+//    }
+    normA<<<blockNum, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, dimensions, 0);
+    //cudaDeviceSynchronize();
+    int lastVectors = dataSize - blockNum * dimensions;
+    if(lastVectors > 0){
+        dim3 lastBlockDim(clusterNumber, lastVectors, n);
+        normA<<<1, lastBlockDim>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, lastVectors, blockNum);
     }
-    normA<<<1, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, 0);
     cudaDeviceSynchronize();
     for (int v = 0; v < dataSize; v++)
     {
