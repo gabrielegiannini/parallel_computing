@@ -63,7 +63,7 @@ __global__ void normA(const double vect[], const double centroids[], double res[
     */
     //printf("Indice res %lu\n",blockIdx.y*n + blockIdx.x*dataSize*n + threadIdx.x);
     // cudaMalloc((void **) &centroids, sizeof(double) * cluster_number * n * numberOfConcurrentKmeans)
-    int trueIndex = warpWindow + threadIdx.x;
+    uint trueIndex = warpWindow + threadIdx.x;
     //printf("Grappa: %lu %i %i %i %i\n", blockIdx.y * n + blockIdx.x * dataSize * n + trueIndex + kmeanIndex * dataSize * n * clusterNumber,blockIdx.x, blockIdx.y,trueIndex,kmeanIndex );
     res[threadIdx.y * n + threadIdx.z * dataSize * n + trueIndex + kmeanIndex * dataSize * n * clusterNumber] = pow(
             vect[threadIdx.y * n + trueIndex] -
@@ -117,7 +117,7 @@ __global__ void meanz(double centroids[], const double data[], const int S[], co
 // dataSize è il numero di vettori, ovvero sizeof(data) / n (sennò aveva davvero poco senso)
 __global__ void
 kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double data[], double centroids[], double res[],
-            double sum[], size_t dataSize, size_t clusterNumber)
+            double sum[], size_t dataSize, uint clusterNumber)
 {
     int *posMin = new int[dataSize];
     auto *min = new double[dataSize]; //inizializzare a DBL_MAX
@@ -137,18 +137,18 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
     }
 
     //norm(data, means);
-    int totalThreads = clusterNumber * dataSize *n;
+    int totalThreads = clusterNumber * dataSize * n;
     // dim3 numBlocks(clusterNumber, dataSize);
-    int blockNum = __double2int_ru(totalThreads / 1024);
+    int blockNum = __double2int_ru(totalThreads / 1024.0);
     //printf("Sto per fare norm\n");
-    dim3 threadDim(clusterNumber,__double2int_ru(1024/clusterNumber/n),n);
-    int dimensions = n;
-    while (dimensions > 1024) {
-        dimensions-=1024;
-        normA<<<blockNum, threadDim>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, dimensions);
+    const int dimensions = __double2int_rd(1024.0 / clusterNumber / n);
+    dim3 blockDimensions(clusterNumber, dimensions, n);
+    while (totalThreads > dimensions) {
+        totalThreads-=dimensions;
+        normA<<<1, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, totalThreads);
         cudaDeviceSynchronize();
     }
-    normA<<<blockNum, dimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, 0);
+    normA<<<1, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, 0);
     cudaDeviceSynchronize();
     for (int v = 0; v < dataSize; v++)
     {
@@ -379,7 +379,7 @@ int main(int argc, char *argv[])
     S_host_old = new int[element_count * numberOfConcurrentKmeans];
     int *bestS = new int[element_count];
     dimS_host = new int[cluster_number];
-    double *totalNormAvg_host = new double[cluster_number];
+    double *totalNormAvg_host = new double[cluster_number*numberOfConcurrentKmeans];
 
     // Allocate device memory
     CUDA_CHECK_RETURN(
@@ -428,6 +428,8 @@ int main(int argc, char *argv[])
         CUDA_CHECK_RETURN(cudaDeviceSynchronize());
         CUDA_CHECK_RETURN(
                 cudaMemcpy(S_host, S, sizeof(int) * element_count * numberOfConcurrentKmeans, cudaMemcpyDeviceToHost));
+        CUDA_CHECK_RETURN(cudaMemcpy(totalNormAvg_host, totalNormAvg,
+                                     sizeof(double) * cluster_number * numberOfConcurrentKmeans, cudaMemcpyDeviceToHost));
         for (int k = 0; k < numberOfConcurrentKmeans; k++)
         {
             for (int i = 0; i < element_count; i++)
@@ -438,12 +440,12 @@ int main(int argc, char *argv[])
                 } else
                 {
                     totalRuns--;
-                    CUDA_CHECK_RETURN(cudaMemcpy(totalNormAvg_host, totalNormAvg + k * cluster_number,
-                                                 sizeof(double) * cluster_number, cudaMemcpyDeviceToHost));
+//                    CUDA_CHECK_RETURN(cudaMemcpy(totalNormAvg_host, totalNormAvg + k * cluster_number,
+//                                                 sizeof(double) * cluster_number, cudaMemcpyDeviceToHost));
                     double totNorm = 0;
                     for (int h = 0; h < cluster_number; h++)
                     {
-                        totNorm += totalNormAvg_host[h];
+                        totNorm += totalNormAvg_host[k*numberOfConcurrentKmeans + h];
                     }
                     if (totNorm < minAvgNorm)
                     {
