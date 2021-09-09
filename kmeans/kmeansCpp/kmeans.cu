@@ -2,11 +2,6 @@
 #include <cstdlib>
 #include <cmath>
 #include <cassert>
-#include <cuda.h>
-#include <cuda_runtime.h>
-#include <thrust/host_vector.h>
-#include <thrust/device_vector.h>
-#include <thrust/copy.h>
 #include <iostream>
 #include <string>
 #include <fstream>
@@ -15,7 +10,6 @@
 #include <unordered_map>
 #include <future>
 #include <filesystem>
-#include <thread>
 #include <cfloat>
 #include <sstream>
 #include <iomanip>
@@ -30,27 +24,7 @@ using namespace std;
 #define DEFAULT_CLUSTER_NUMBER 5
 #define ARRAYSIZEOF(ptr) (sizeof(ptr)/sizeof(ptr[0]))
 
-static void CheckCudaErrorAux(const char *, unsigned, const char *,
-                              cudaError_t);
-
-#define CUDA_CHECK_RETURN(value) CheckCudaErrorAux(__FILE__,__LINE__, #value, value)
-
-/**
- * Check the return value of the CUDA runtime API call and exit
- * the application if the call has failed.
- */
-static void CheckCudaErrorAux(const char *file, unsigned line,
-                              const char *statement, cudaError_t err)
-{
-    if (err == cudaSuccess)
-        return;
-    std::cerr << statement << " returned " << cudaGetErrorString(err) << "("
-              << err << ") at " << file << ":" << line << std::endl;
-    exit(1);
-}
-
-__global__ void
-normA(const double vect[], const double centroids[], double res[], const size_t n, double sum[], const size_t dataSize,
+void normA(const double vect[], const double centroids[], double res[], const size_t n, double sum[], const size_t dataSize,
       int kmeanIndex, const size_t clusterNumber, const int vectorsPerThread, const uint blockOffset)
 {
     /* 
@@ -86,8 +60,7 @@ normA(const double vect[], const double centroids[], double res[], const size_t 
     }
 }
 
-__global__ void
-meanz(double centroids[], const double data[], const int S[], const int dimS[], size_t n, int kmeanIndex,
+void meanz(double centroids[], const double data[], const int S[], const int dimS[], size_t n, int kmeanIndex,
       size_t clusterNumber, int dataSize)
 {// calcola centroidi
     centroids[blockIdx.x * n + threadIdx.x + kmeanIndex * n * clusterNumber] = 0;
@@ -115,9 +88,9 @@ meanz(double centroids[], const double data[], const int S[], const int dimS[], 
             dimS[blockIdx.x + kmeanIndex * clusterNumber];
 }
 
+
 // dataSize è il numero di vettori, ovvero sizeof(data) / n (sennò aveva davvero poco senso)
-__global__ void
-kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double data[], double centroids[], double res[],
+void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double data[], double centroids[], double res[],
             double sum[], size_t dataSize, uint clusterNumber)
 {
     int *posMin = new int[dataSize];
@@ -132,8 +105,8 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
     int *filledS = new int[clusterNumber];
     for (int h = 0; h < clusterNumber; h++)
     {// array delle norme. no cuda
-        dimS[h + clusterNumber * threadIdx.x] = 0;
-        totalNormAvg[h + clusterNumber * threadIdx.x] = 0;
+        dimS[h + clusterNumber] = 0;
+        totalNormAvg[h + clusterNumber] = 0;
         filledS[h] = 0;
     }
 
@@ -172,13 +145,13 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
     {
         for (int h = 0; h < clusterNumber; h++)
         {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
-            if (sum[h * dataSize + threadIdx.x * clusterNumber * dataSize + v] < min[v])
+            if (sum[h * dataSize + clusterNumber * dataSize + v] < min[v])
             {
-                min[v] = sum[h * dataSize + threadIdx.x * clusterNumber * dataSize + v];
+                min[v] = sum[h * dataSize + clusterNumber * dataSize + v];
                 posMin[v] = h;
             }
         }
-        dimS[posMin[v] + threadIdx.x * clusterNumber] += 1;
+        dimS[posMin[v] + clusterNumber] += 1;
     }
 
     for (int l = 0; l < dataSize; l++)
@@ -186,24 +159,24 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
         int targetPosition = 0;
         for (int i = 0; i < posMin[l]; i++)
         {
-            targetPosition += dimS[i + threadIdx.x * clusterNumber];
+            targetPosition += dimS[i + clusterNumber];
         }
         targetPosition += filledS[posMin[l]];
 //        for (int k=0;k<n;k++){
 //            S[targetPosition*n+k] = data[l*n+k];
 //        }
-        S[targetPosition + threadIdx.x * dataSize] = l;
+        S[targetPosition + dataSize] = l;
         filledS[posMin[l]] += 1;
-        totalNormAvg[posMin[l] + threadIdx.x * clusterNumber] =
-                totalNormAvg[posMin[l] + threadIdx.x * clusterNumber] + min[l];
+        totalNormAvg[posMin[l] + clusterNumber] =
+                totalNormAvg[posMin[l] + clusterNumber] + min[l];
     }
 
     for (int i = 0; i < clusterNumber; i++)
     {
-        if (dimS[i + threadIdx.x * clusterNumber] > 0)
+        if (dimS[i + clusterNumber] > 0)
         {
-            totalNormAvg[i + threadIdx.x * clusterNumber] =
-                    totalNormAvg[i + threadIdx.x * clusterNumber] / dimS[i + threadIdx.x * clusterNumber];
+            totalNormAvg[i + clusterNumber] =
+                    totalNormAvg[i + clusterNumber] / dimS[i + clusterNumber];
         }
     }
 
@@ -315,8 +288,7 @@ string formatClusters(vector<string> &labels, int clusters[], const int dimS[], 
     return table.str();
 }
 
-void initClusters(int cluster_number, unsigned long n, const double *data, double *centroidInit, size_t element_count,
-                  int kmeanIndex)
+void initClusters(int cluster_number, unsigned long n, const double *data, double *centroidInit, size_t element_count)
 {
     for (int i = 0; i < cluster_number; i++)
     {
@@ -325,7 +297,7 @@ void initClusters(int cluster_number, unsigned long n, const double *data, doubl
 //        cout << "Posizione " << i << "-esima: " << randomDataPos << endl;
         for (int j = 0; j < n; j++)
         {
-            centroidInit[(i * n + j) + kmeanIndex * cluster_number * n] = data[randomDataPos * n + j];
+            centroidInit[(i * n + j) + cluster_number * n] = data[randomDataPos * n + j];
         }
     }
 }
@@ -347,7 +319,6 @@ int main(int argc, char *argv[])
     string target_file = "../../test_reale.csv";
     string output_file = "output.txt";
     bool print = false;
-    int numberOfConcurrentKmeans = 5;
     int totalRuns = 100;
 
     for (int i = 1; i < argc; i++)
@@ -364,9 +335,6 @@ int main(int argc, char *argv[])
         } else if (!strcmp("-p", argv[i]) || !strcmp("--print", argv[i]))
         {
             print = true;
-        } else if (!strcmp("-pk", argv[i]) || !strcmp("--parallel-kmeans", argv[i]))
-        {
-            numberOfConcurrentKmeans = stoi(argv[++i]);
         } else if (!strcmp("-tr", argv[i]) || !strcmp("--total-runs", argv[i]))
         {
             totalRuns = stoi(argv[++i]);
@@ -383,7 +351,7 @@ int main(int argc, char *argv[])
     unsigned long n = parseData(myfile, dataVec, dataLabel);
     myfile.close();
     double data[dataVec.size()];
-    double centroidInit[cluster_number * n * numberOfConcurrentKmeans];
+    double centroidInit[cluster_number * n];
     std::copy(dataVec.begin(), dataVec.end(), data);
     size_t element_count = dataLabel.size();
     for (string elem: dataLabel)
@@ -395,36 +363,19 @@ int main(int argc, char *argv[])
     cout << "Element dimensions (n) = " << n << endl;
 
     // Allocate host memory
-    S_host = new int[element_count * numberOfConcurrentKmeans];
-    S_host_old = new int[element_count * numberOfConcurrentKmeans];
+    S_host = new int[element_count];
+    S_host_old = new int[element_count];
     int *bestS = new int[element_count];
     dimS_host = new int[cluster_number];
-    double *totalNormAvg_host = new double[cluster_number * numberOfConcurrentKmeans];
+    double *totalNormAvg_host = new double[cluster_number];
 
-    // Allocate device memory
-    CUDA_CHECK_RETURN(
-            cudaMalloc((void **) &res, sizeof(double) * dataVec.size() * cluster_number * numberOfConcurrentKmeans));
-    CUDA_CHECK_RETURN(
-            cudaMalloc((void **) &sum, sizeof(double) * element_count * cluster_number * numberOfConcurrentKmeans));
-    CUDA_CHECK_RETURN(cudaMalloc((void **) &S, sizeof(int) * element_count * numberOfConcurrentKmeans));
-    CUDA_CHECK_RETURN(cudaMalloc((void **) &dimS, sizeof(double) * cluster_number * numberOfConcurrentKmeans));
-    CUDA_CHECK_RETURN(cudaMalloc((void **) &totalNormAvg, sizeof(double) * cluster_number * numberOfConcurrentKmeans));
-    CUDA_CHECK_RETURN(cudaMalloc((void **) &centroids, sizeof(double) * cluster_number * n * numberOfConcurrentKmeans));
-    CUDA_CHECK_RETURN(cudaMalloc((void **) &data_d, sizeof(double) * dataVec.size()));
-
-    // Transfer data from host to device memory
-    CUDA_CHECK_RETURN(cudaMemcpy(data_d, data, sizeof(double) * dataVec.size(), cudaMemcpyHostToDevice));
+    res = new double[dataVec.size()][cluster_number];
+    sum = new double[element_count][cluster_number];
+    centroids = new double [cluster_number][n];
 
     //init cluster picking random arrays from data
     srand(time(nullptr));
-    for (int k = 0; k < numberOfConcurrentKmeans; k++)
-    {
-        initClusters(cluster_number, n, data, centroidInit, element_count, k);
-    }
-
-    CUDA_CHECK_RETURN(
-            cudaMemcpy(centroids, centroidInit, sizeof(double) * n * cluster_number * numberOfConcurrentKmeans,
-                       cudaMemcpyHostToDevice)); //i vettori inizializzati nel for prima
+    initClusters(cluster_number, n, data, centroidInit, element_count, k);
 
     // Executing kernel
     // cudaEvent_t start, stop;
@@ -436,24 +387,8 @@ int main(int argc, char *argv[])
     float milliseconds = 0;
     while (totalRuns > 0)
     {
-        // cudaEventRecord(start);
-        kmeanDevice<<<1, numberOfConcurrentKmeans>>>(S, dimS, n, totalNormAvg, data_d, centroids, res, sum,
-                                                     element_count, cluster_number);
-        // cudaEventRecord(stop);
-        // cudaEventSynchronize(stop);
-        // float millisecondsTmp;
-        // cudaEventElapsedTime(&millisecondsTmp, start, stop);
-        //milliseconds = milliseconds + millisecondsTmp;
-        //cout << "The elapsed time in gpu was: " << milliseconds << "ms." << endl;
+        kmeanDevice(S, dimS, n, totalNormAvg, data_d, centroids, res, sum, element_count, cluster_number);
 
-        CUDA_CHECK_RETURN(cudaDeviceSynchronize());
-        CUDA_CHECK_RETURN(
-                cudaMemcpy(S_host, S, sizeof(int) * element_count * numberOfConcurrentKmeans, cudaMemcpyDeviceToHost));
-        CUDA_CHECK_RETURN(cudaMemcpy(totalNormAvg_host, totalNormAvg,
-                                     sizeof(double) * cluster_number * numberOfConcurrentKmeans,
-                                     cudaMemcpyDeviceToHost));
-        for (int k = 0; k < numberOfConcurrentKmeans; k++)
-        {
             for (int i = 0; i < element_count; i++)
             {
                 if (S_host[i + k * element_count] != S_host_old[i + k * element_count])
@@ -462,39 +397,25 @@ int main(int argc, char *argv[])
                 } else
                 {
                     totalRuns--;
-//                    CUDA_CHECK_RETURN(cudaMemcpy(totalNormAvg_host, totalNormAvg + k * cluster_number,
-//                                                 sizeof(double) * cluster_number, cudaMemcpyDeviceToHost));
                     double totNorm = 0;
                     for (int h = 0; h < cluster_number; h++)
                     {
-                        totNorm += totalNormAvg_host[k * numberOfConcurrentKmeans + h];
+                        totNorm += totalNormAvg_host[k + h];
                     }
                     if (totNorm < minAvgNorm)
                     {
                         minAvgNorm = totNorm;
                         memcpy(bestS, S_host + k * element_count, sizeof(int) * element_count);
-                        CUDA_CHECK_RETURN(cudaMemcpy(dimS_host, dimS + k * cluster_number, sizeof(int) * cluster_number,
-                                                     cudaMemcpyDeviceToHost));
-                    }
-                    if (totalRuns > 0)
-                    {
-                        initClusters(cluster_number, n, data, centroidInit, element_count, k);
-                        CUDA_CHECK_RETURN(
-                                cudaMemcpy(centroids + k * cluster_number * n, centroidInit + k * cluster_number * n,
-                                           sizeof(double) * cluster_number * n, cudaMemcpyHostToDevice));
-
                     }
                 }
             }
-        }
         int *tmp = S_host_old;
         S_host_old = S_host;
         S_host = tmp;
         iterazioni++;
     }
 
-    cout << "Dimensione grid: " << cluster_number << "x" << element_count << endl;
-    cout << "Dimensioni dei cluster\n";
+
     int sommaDim = 0;
     for (int i = 0; i < cluster_number; i++)
     {
@@ -515,21 +436,15 @@ int main(int argc, char *argv[])
         cout << output;
     }
 
-    // Deallocate device memory
-    cudaFree(res);
-    cudaFree(sum);
-    cudaFree(S);
-    cudaFree(dimS);
-    cudaFree(totalNormAvg);
-    cudaFree(centroids);
-    cudaFree(data_d);
-
     // Deallocate host memory
     delete[] S_host;
     delete[] S_host_old;
     delete[] dimS_host;
     delete[] bestS;
     delete[] totalNormAvg_host;
+    delete []res;
+    delete []sum;
+    delete [] centroids;
 
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
     cout << "" << endl;
@@ -538,5 +453,3 @@ int main(int argc, char *argv[])
     cout << "   -tempo di esecuzione funzione meanz: " << iterazioni << " iterazioni." << endl;
     cout << "" << endl;
 }
-
-
