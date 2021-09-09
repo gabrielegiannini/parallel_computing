@@ -8,7 +8,7 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CUDA_SEPARABLE_COMPILATION ON)
 #set(CUDA_NVCC_FLAGS "-arch=sm_60 -rdc=true" )
 
-add_executable(kmeans-cuda kmeans.cu)
+add_executable(kmeans-cuda kmeans.cpp)
 target_compile_options(kmeans-cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-rdc=true>)
 target_link_libraries(kmeans-cuda ${CUDA_cudadevrt_LIBRARY})
 set_target_properties(kmeans-cuda PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
