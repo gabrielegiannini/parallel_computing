@@ -49,7 +49,8 @@ static void CheckCudaErrorAux(const char *file, unsigned line,
     exit(1);
 }
 
-__global__ void normA(const double vect[], const double centroids[], double res[], const size_t n, double sum[], const size_t dataSize,
+__global__ void
+normA(const double vect[], const double centroids[], double res[], const size_t n, double sum[], const size_t dataSize,
       int kmeanIndex, const size_t clusterNumber, const int vectorsPerThread, const uint blockOffset)
 {
     /* 
@@ -63,27 +64,30 @@ __global__ void normA(const double vect[], const double centroids[], double res[
     */
     //printf("Indice res %lu\n",blockIdx.y*n + blockIdx.x*dataSize*n + threadIdx.x);
     // trueIndex = il vettore sul quale deve operare questo thread
-    uint trueIndex = (blockOffset + blockIdx.x) * vectorsPerThread + threadIdx.y;
+
+    // 2a invocazione -> blockOffset = blockNum*dimensions
+    const uint trueIndex = blockOffset + blockIdx.x * vectorsPerThread + threadIdx.x;
     //printf("Grappa: %lu %i %i %i %i\n", blockIdx.y * n + blockIdx.x * dataSize * n + trueIndex + kmeanIndex * dataSize * n * clusterNumber,blockIdx.x, blockIdx.y,trueIndex,kmeanIndex );
-    res[trueIndex * n + threadIdx.x * dataSize * n + threadIdx.z + kmeanIndex * dataSize * n * clusterNumber] = pow(
-            vect[trueIndex * n + threadIdx.z] -
-            centroids[threadIdx.x * n + threadIdx.z + kmeanIndex * n * clusterNumber], 2);
-    //printf("res ok \n");
+    res[trueIndex * n + blockIdx.y * dataSize * n + threadIdx.y + kmeanIndex * dataSize * n * clusterNumber] = pow(
+            vect[trueIndex * n + threadIdx.y] -
+            centroids[blockIdx.y * n + threadIdx.y + kmeanIndex * n * clusterNumber], 2);
+    //printf("res ok \n"); 264.672
     __syncthreads();
     //__threadfence();
-    if (threadIdx.z == 0)
+    if (threadIdx.y == 0)
     {
-        sum[threadIdx.x * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] = 0;
+        sum[blockIdx.y * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] = 0;
         for (int i = 0; i < n; i++)
         {
-            sum[threadIdx.x * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] =
-                    sum[threadIdx.x * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] +
-                    res[trueIndex * n + threadIdx.x * dataSize * n + i + kmeanIndex * dataSize * n * clusterNumber];
+            sum[blockIdx.y * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] =
+                    sum[blockIdx.y * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] +
+                    res[trueIndex * n + blockIdx.y * dataSize * n + i + kmeanIndex * dataSize * n * clusterNumber];
         }
     }
 }
 
-__global__ void meanz(double centroids[], const double data[], const int S[], const int dimS[], size_t n, int kmeanIndex,
+__global__ void
+meanz(double centroids[], const double data[], const int S[], const int dimS[], size_t n, int kmeanIndex,
       size_t clusterNumber, int dataSize)
 {// calcola centroidi
     centroids[blockIdx.x * n + threadIdx.x + kmeanIndex * n * clusterNumber] = 0;
@@ -136,21 +140,32 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
     //norm(data, means);
     int totalThreads = clusterNumber * dataSize * n;
     // dim3 numBlocks(clusterNumber, dataSize);
-    int blockNum = __double2int_rd(totalThreads / 1024.0);
+
+    const int dimensions = __double2int_rd(1024.0 / n);
+    // blocknum*n*clusternumber*dimensions ~~ totalThreads
+    int blockNum = (totalThreads / (dimensions*n)) / clusterNumber;
     //printf("Sto per fare norm\n");
-    const int dimensions = __double2int_rd(1024.0 / clusterNumber / n);
-    dim3 blockDimensions(clusterNumber, dimensions, n);
+    dim3 blockDimensions(dimensions, n);
+    dim3 gridDimension(blockNum, clusterNumber);
 //    while (totalThreads > dimensions) {
 //        totalThreads-=dimensions;
 //        normA<<<1, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, totalThreads);
 //        cudaDeviceSynchronize();
 //    }
-    normA<<<blockNum, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, dimensions, 0);
+    if (blockNum > 0)
+    {
+        normA<<<gridDimension, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber,
+                                             dimensions, 0);
+    }
     //cudaDeviceSynchronize();
     int lastVectors = dataSize - blockNum * dimensions;
-    if(lastVectors > 0){
-        dim3 lastBlockDim(clusterNumber, lastVectors, n);
-        normA<<<1, lastBlockDim>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, lastVectors, blockNum);
+    printf("===== blockNum: %i, lastVectors: %i, dimensions: %i\n", blockNum, lastVectors, dimensions);
+    if (lastVectors > 0)
+    {
+        dim3 lastBlockDim(lastVectors, n);
+        dim3 lastGridDim(1,clusterNumber);
+        normA<<<lastGridDim, lastBlockDim>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, lastVectors,
+                                   blockNum*(dimensions));
     }
     cudaDeviceSynchronize();
     for (int v = 0; v < dataSize; v++)
@@ -199,12 +214,13 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
     delete[] posMin;
 }
 
-bool isNullOrWhitespace(const std::string& str) {
-        return str.empty()
-            || std::all_of(str.begin(), str.end(), [](char c) {
-            return std::isspace(static_cast<unsigned char>(c));
-        });
-    }
+bool isNullOrWhitespace(const std::string &str)
+{
+    return str.empty()
+           || std::all_of(str.begin(), str.end(), [](char c) {
+        return std::isspace(static_cast<unsigned char>(c));
+    });
+}
 
 unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &labels)
 {
@@ -215,7 +231,7 @@ unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &lab
     {
         string row;
         getline(csv, row);
-        if(isNullOrWhitespace(row)) continue; // ignore blank lines
+        if (isNullOrWhitespace(row)) continue; // ignore blank lines
         // perche ovviamente in c++ string.split() non esiste...
         vector<string> rowArr;
         const char delimiter = ';';
@@ -306,7 +322,7 @@ void initClusters(int cluster_number, unsigned long n, const double *data, doubl
     {
         size_t randomDataPos = rand() % (element_count - 1);
 //        cout << "random num: ";
-//        cout << randomDataPos << endl;
+//        cout << "Posizione " << i << "-esima: " << randomDataPos << endl;
         for (int j = 0; j < n; j++)
         {
             centroidInit[(i * n + j) + kmeanIndex * cluster_number * n] = data[randomDataPos * n + j];
@@ -370,7 +386,8 @@ int main(int argc, char *argv[])
     double centroidInit[cluster_number * n * numberOfConcurrentKmeans];
     std::copy(dataVec.begin(), dataVec.end(), data);
     size_t element_count = dataLabel.size();
-    for(string elem: dataLabel){
+    for (string elem: dataLabel)
+    {
         cout << elem << endl;
     }
     cout << "Data element number: " << element_count << "\n";
@@ -382,7 +399,7 @@ int main(int argc, char *argv[])
     S_host_old = new int[element_count * numberOfConcurrentKmeans];
     int *bestS = new int[element_count];
     dimS_host = new int[cluster_number];
-    double *totalNormAvg_host = new double[cluster_number*numberOfConcurrentKmeans];
+    double *totalNormAvg_host = new double[cluster_number * numberOfConcurrentKmeans];
 
     // Allocate device memory
     CUDA_CHECK_RETURN(
@@ -420,19 +437,21 @@ int main(int argc, char *argv[])
     while (totalRuns > 0)
     {
         // cudaEventRecord(start);
-        kmeanDevice<<<1, numberOfConcurrentKmeans>>>(S, dimS, n, totalNormAvg, data_d, centroids, res, sum, element_count, cluster_number);
+        kmeanDevice<<<1, numberOfConcurrentKmeans>>>(S, dimS, n, totalNormAvg, data_d, centroids, res, sum,
+                                                     element_count, cluster_number);
         // cudaEventRecord(stop);
         // cudaEventSynchronize(stop);
         // float millisecondsTmp;
         // cudaEventElapsedTime(&millisecondsTmp, start, stop);
         //milliseconds = milliseconds + millisecondsTmp;
         //cout << "The elapsed time in gpu was: " << milliseconds << "ms." << endl;
-                                                     
+
         CUDA_CHECK_RETURN(cudaDeviceSynchronize());
         CUDA_CHECK_RETURN(
                 cudaMemcpy(S_host, S, sizeof(int) * element_count * numberOfConcurrentKmeans, cudaMemcpyDeviceToHost));
         CUDA_CHECK_RETURN(cudaMemcpy(totalNormAvg_host, totalNormAvg,
-                                     sizeof(double) * cluster_number * numberOfConcurrentKmeans, cudaMemcpyDeviceToHost));
+                                     sizeof(double) * cluster_number * numberOfConcurrentKmeans,
+                                     cudaMemcpyDeviceToHost));
         for (int k = 0; k < numberOfConcurrentKmeans; k++)
         {
             for (int i = 0; i < element_count; i++)
@@ -448,7 +467,7 @@ int main(int argc, char *argv[])
                     double totNorm = 0;
                     for (int h = 0; h < cluster_number; h++)
                     {
-                        totNorm += totalNormAvg_host[k*numberOfConcurrentKmeans + h];
+                        totNorm += totalNormAvg_host[k * numberOfConcurrentKmeans + h];
                     }
                     if (totNorm < minAvgNorm)
                     {
@@ -476,11 +495,13 @@ int main(int argc, char *argv[])
 
     cout << "Dimensione grid: " << cluster_number << "x" << element_count << endl;
     cout << "Dimensioni dei cluster\n";
+    int sommaDim = 0;
     for (int i = 0; i < cluster_number; i++)
     {
         cout << dimS_host[i] << endl;
+        sommaDim+=dimS_host[i];
     }
-    cout << "\n";
+    cout << "Totale dimS: " << sommaDim << "\n";
 
 
     string output = formatClusters(dataLabel, bestS, dimS_host, cluster_number, element_count);
@@ -511,11 +532,11 @@ int main(int argc, char *argv[])
     delete[] totalNormAvg_host;
 
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
-    cout <<""<< endl;
-    cout << "Tempo di esecuzione funzioni kernel: " << milliseconds/1000 << "s" << endl;
+    cout << "" << endl;
+    cout << "Tempo di esecuzione funzioni kernel: " << milliseconds / 1000 << "s" << endl;
     cout << "   -tempo di esecuzione funzione normA: " << iterazioni << " iterazioni." << endl;
     cout << "   -tempo di esecuzione funzione meanz: " << iterazioni << " iterazioni." << endl;
-    cout <<""<< endl;
+    cout << "" << endl;
 }
 
 
