@@ -452,40 +452,44 @@ int main(int argc, char *argv[])
         CUDA_CHECK_RETURN(cudaMemcpy(totalNormAvg_host, totalNormAvg,
                                      sizeof(double) * cluster_number * numberOfConcurrentKmeans,
                                      cudaMemcpyDeviceToHost));
+        bool converged = true;
         for (int k = 0; k < numberOfConcurrentKmeans; k++)
         {
             for (int i = 0; i < element_count; i++)
             {
                 if (S_host[i + k * element_count] != S_host_old[i + k * element_count])
                 {
+                    converged = false;
                     break;
-                } else
-                {
-                    totalRuns--;
-//                    CUDA_CHECK_RETURN(cudaMemcpy(totalNormAvg_host, totalNormAvg + k * cluster_number,
-//                                                 sizeof(double) * cluster_number, cudaMemcpyDeviceToHost));
-                    double totNorm = 0;
-                    for (int h = 0; h < cluster_number; h++)
-                    {
-                        totNorm += totalNormAvg_host[k * numberOfConcurrentKmeans + h];
-                    }
-                    if (totNorm < minAvgNorm)
-                    {
-                        minAvgNorm = totNorm;
-                        memcpy(bestS, S_host + k * element_count, sizeof(int) * element_count);
-                        CUDA_CHECK_RETURN(cudaMemcpy(dimS_host, dimS + k * cluster_number, sizeof(int) * cluster_number,
-                                                     cudaMemcpyDeviceToHost));
-                    }
-                    if (totalRuns > 0)
-                    {
-                        initClusters(cluster_number, n, data, centroidInit, element_count, k);
-                        CUDA_CHECK_RETURN(
-                                cudaMemcpy(centroids + k * cluster_number * n, centroidInit + k * cluster_number * n,
-                                           sizeof(double) * cluster_number * n, cudaMemcpyHostToDevice));
-
-                    }
                 }
             }
+            if(converged)
+            {
+                totalRuns--;
+//                    CUDA_CHECK_RETURN(cudaMemcpy(totalNormAvg_host, totalNormAvg + k * cluster_number,
+//                                                 sizeof(double) * cluster_number, cudaMemcpyDeviceToHost));
+                double totNorm = 0;
+                for (int h = 0; h < cluster_number; h++)
+                {
+                    totNorm += totalNormAvg_host[k * numberOfConcurrentKmeans + h];
+                }
+                if (totNorm < minAvgNorm)
+                {
+                    minAvgNorm = totNorm;
+                    memcpy(bestS, S_host + k * element_count, sizeof(int) * element_count);
+                    CUDA_CHECK_RETURN(cudaMemcpy(dimS_host, dimS + k * cluster_number, sizeof(int) * cluster_number,
+                                                 cudaMemcpyDeviceToHost));
+                }
+                if (totalRuns > 0)
+                {
+                    initClusters(cluster_number, n, data, centroidInit, element_count, k);
+                    CUDA_CHECK_RETURN(
+                            cudaMemcpy(centroids + k * cluster_number * n, centroidInit + k * cluster_number * n,
+                                       sizeof(double) * cluster_number * n, cudaMemcpyHostToDevice));
+
+                }
+            }
+
         }
         int *tmp = S_host_old;
         S_host_old = S_host;
