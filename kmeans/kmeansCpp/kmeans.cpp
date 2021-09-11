@@ -9,10 +9,15 @@
 #include <filesystem>
 #include <cstring>
 #include <algorithm>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
 using namespace std;
+using std::chrono::high_resolution_clock;
+using std::chrono::duration_cast;
+using std::chrono::duration;
+using std::chrono::milliseconds;
 
 #define DEFAULT_CLUSTER_NUMBER 5
 #define ARRAYSIZEOF(ptr) (sizeof(ptr)/sizeof(ptr[0]))
@@ -88,9 +93,10 @@ void meanz(double **centroids, double **data, const int S[], const int dimS[], s
 
 
 // dataSize è il numero di vettori, ovvero sizeof(data) / n (sennò aveva davvero poco senso)
-void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], double **data, double **centroids, double ***res,
-            double **sum, size_t dataSize, uint clusterNumber)
+int *kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], double **data, double **centroids, double ***res,
+            double **sum, size_t dataSize, uint clusterNumber, int norma_time, int meanz_time)
 {
+    int *vect = new int[2];
     int *posMin = new int[dataSize];
     auto *min = new double[dataSize]; //inizializzare a DBL_MAX
 
@@ -112,7 +118,11 @@ void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], double **
         filledS[h] = 0;
     }
 
+    auto t1 = high_resolution_clock::now();
     normA(data, centroids, res, sum, dataSize, clusterNumber, n);
+    auto t2 = high_resolution_clock::now();
+    auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
+    vect[0] = ms_int.count();
 
     //min sum evaluation and increase dimS in the position relative to the min value evaluated
     for (int v = 0; v < dataSize; v++){
@@ -144,10 +154,16 @@ void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], double **
         }
     }
 
+    auto t12 = high_resolution_clock::now();
     meanz(centroids, data, S, dimS, n, clusterNumber, dataSize);
+    auto t22 = high_resolution_clock::now();
+    auto ms_int2 = std::chrono::duration_cast<std::chrono::microseconds>(t22 - t12);
+    vect[1] = ms_int2.count();
+
     delete[] filledS;
     delete[] min;
     delete[] posMin;
+    return vect;
 }
 
 bool isNullOrWhitespace(const std::string &str)
@@ -382,11 +398,21 @@ int main(int argc, char *argv[])
     //kmeans
     size_t iterazioni = 0;
     double minAvgNorm = DBL_MAX;
+    int kmeans_device_time = 0;
+    int norma_time = 0;
+    int meanz_time = 0;
+    int *vect = new int[2];
     float milliseconds = 0;
     while (totalRuns > 0)
     {
         bool converged = true;
-        kmeanDevice(S_host, dimS_host, n, totalNormAvg, data_bidimensional, centroidInit, res, sum, element_count, cluster_number);
+        auto t1 = high_resolution_clock::now();
+        vect = kmeanDevice(S_host, dimS_host, n, totalNormAvg, data_bidimensional, centroidInit, res, sum, element_count, cluster_number, norma_time, meanz_time);
+        norma_time += vect[0];
+        meanz_time += vect[1];
+        auto t2 = high_resolution_clock::now();
+        auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
+        kmeans_device_time += ms_int.count();
         for (int i = 0; i < element_count; i++)
         {
             if (S_host[i] != S_host_old[i])
@@ -449,6 +475,20 @@ int main(int argc, char *argv[])
     delete []sum;
     delete [] centroids;
 
+
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
     cout << "" << endl;
+    cout << "Completion time kmean device: " << kmeans_device_time<< "µs" <<endl;
+    cout << "Completion time norma: " << norma_time<< "µs" <<endl;
+    cout << "Completion time meanz: " << meanz_time<< "µs" <<endl;
+    cout << "Tempo altre operazioni in kmean device: " << kmeans_device_time - norma_time - meanz_time<< "µs" <<endl;
+    cout << "" << endl;
+    cout << "Throughput kmean device: " << 1.0/kmeans_device_time<< " operations executed in 1/Completion time" <<endl;
+    cout << "Throughput norma: " << 1.0/norma_time<< " operations executed in 1/Completion time" <<endl;
+    cout << "Throughput meanz: " << 1.0/meanz_time<< " operations executed in 1/Completion time" <<endl;
+    cout << "" << endl;
+    cout << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time" << endl;
+    cout << "" << endl;
+    cout << "Latency: uguale al Service time" << endl;
+
 }
