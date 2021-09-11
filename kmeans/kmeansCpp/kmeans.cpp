@@ -393,6 +393,7 @@ int main(int argc, char *argv[])
             }
         }
         if (converged){
+            initClusters(cluster_number, n, data, centroidInit, element_count);
             totalRuns--;
             double totNorm = 0;
             for (int h = 0; h < cluster_number; h++)
@@ -406,8 +407,11 @@ int main(int argc, char *argv[])
             }
         }
         int *tmp = S_host_old;
-        S_host_old = S_host;
+        int *tmp2 = S_host;
+        S_host_old = tmp2;
         S_host = tmp;
+//        cout<<"S: "<<S_host<<"\n";
+//        cout<<"S old: "<<S_host_old<<"\n";
         iterazioni++;
     }
 
