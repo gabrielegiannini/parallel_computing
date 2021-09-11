@@ -159,7 +159,6 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
     }
     //cudaDeviceSynchronize();
     int lastVectors = dataSize - blockNum * dimensions;
-    printf("===== blockNum: %i, lastVectors: %i, dimensions: %i\n", blockNum, lastVectors, dimensions);
     if (lastVectors > 0)
     {
         dim3 lastBlockDim(lastVectors, n);

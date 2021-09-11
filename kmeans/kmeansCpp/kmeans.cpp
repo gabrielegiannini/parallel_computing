@@ -6,8 +6,11 @@
 #include <vector>
 #include <cfloat>
 #include <sstream>
+#include <filesystem>
+#include <cstring>
+#include <algorithm>
 
-namespace fs = std::__fs::filesystem;
+namespace fs = std::filesystem;
 
 using namespace std;
 
