@@ -1,21 +1,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
-#include <cassert>
 #include <iostream>
-#include <string>
 #include <fstream>
-#include <utility>
 #include <vector>
-#include <unordered_map>
-#include <future>
-#include <filesystem>
 #include <cfloat>
 #include <sstream>
-#include <iomanip>
-#include <ctime>
-#include <algorithm>
-#include <cctype>
 
 namespace fs = std::__fs::filesystem;
 
@@ -33,8 +23,7 @@ void normA(double **vect, double **centroids, double ***res, double **sum, const
     //res = new double[dataVec.size()][cluster_number];
     //vect e' double data[dataVec.size()];
     //centroids e' centroids = new double [cluster_number][n];
-    cout<<"working9norma\n";
-    cout<<"DATASIZE: "<<dataSize<<"\n";
+
     for(int j=0 ; j<clusterNumber ; j++){
         for(int i=0 ; i<dataSize ; i++){
             for(int k=0; k<n; k++){
@@ -42,7 +31,7 @@ void normA(double **vect, double **centroids, double ***res, double **sum, const
             }
         }
     }
-    cout<<"working10norma\n";
+
     //sum e' sum = new double[element_count][cluster_number];
     for(int k=0 ; k<dataSize ; k++){
         for(int h=0 ; h<clusterNumber ; h++){
@@ -56,14 +45,12 @@ void normA(double **vect, double **centroids, double ***res, double **sum, const
             }
         }
     }
-    cout<<"working11norma\n";
 }
 
 void meanz(double **centroids, double **data, const int S[], const int dimS[], size_t n, size_t clusterNumber, int dataSize){
     // calcola centroidi
     //centroids e' centroids = new double [cluster_number][n];
 
-    cout<<"working21meanz\n";
     //set to 0 all the values
     for(int i=0 ; i<clusterNumber ; i++){
         for(int j=0 ; j<n ; j++){
@@ -72,19 +59,20 @@ void meanz(double **centroids, double **data, const int S[], const int dimS[], s
     }
     size_t dimSum = 0;
 
-    cout<<"working22meanz\n";
     // scorre tutti gli elementi del cluster (la grandezza del cluster e' in dimS[blockIdx.x])
     for (int i = 0; i < clusterNumber; i++){
-        for(int k=0; k<dataSize; k++){
+        int k = dimSum;
+        while(k<dimS[i]+dimSum){
             // quindi alla fine in centroids c'e' la somma di tutte le n-esime coordinate di ogni elemento del cluster
             for (int j=0; j<n ; j++) {
-                centroids[i][j] = centroids[i][j] + data[S[k]][j];
+                    centroids[i][j] = centroids[i][j] + data[S[k]][j];
             }
-            dimSum += 1;
+            k++;
         }
+        dimSum += dimS[i];
     }
 
-    cout<<"working23meanz\n";
+
     // divide per la dimensione del cluster per fare la media -> coordinata n-esima del nuovo centroide di questo cluster
     //dimS e' di dimensione clusterNumber
     for (int i = 0; i < clusterNumber; i++){
@@ -105,14 +93,13 @@ void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], double **
 
 
     // array delle norme. no cuda
-    cout<<"DATASIZE: "<<dataSize<<"\n";
     for (int h = 0; h < dataSize; h++)
     {
         min[h] = DBL_MAX;
         posMin[h] = 0;
     }
 
-    cout<<"working7kmd\n";
+
     // array delle norme. no cuda
     int *filledS = new int[clusterNumber];
     for (int h = 0; h < clusterNumber; h++)
@@ -121,10 +108,9 @@ void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], double **
         totalNormAvg[h] = 0;
         filledS[h] = 0;
     }
-    cout<<"working8kmd\n";
 
     normA(data, centroids, res, sum, dataSize, clusterNumber, n);
-    cout<<"working12kmd\n";
+
     //min sum evaluation and increase dimS in the position relative to the min value evaluated
     for (int v = 0; v < dataSize; v++){
         for (int h = 0; h < clusterNumber; h++){
@@ -135,32 +121,25 @@ void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], double **
         }
         dimS[posMin[v]] += 1;
     }
-    cout<<"working13kmd\n";
+
     //filling S
     for (int l = 0; l < dataSize; l++){
         int targetPosition = 0;
         for (int i = 0; i < posMin[l]; i++){
             targetPosition += dimS[i];
         }
-        cout<<"working14kmd\n";
         targetPosition += filledS[posMin[l]];
-        cout<<"working15kmd\n";
-        cout<<"targetPositionPP: "<<targetPosition<<"\n";
         S[targetPosition] = l;
-        cout<<"working16kmd\n";
         filledS[posMin[l]] += 1;
-        cout<<"working17kmd\n";
         totalNormAvg[posMin[l]] = totalNormAvg[posMin[l]] + min[l];
-        cout<<"working18kmd\n";
     }
-    cout<<"working19kmd\n";
+
     //evaluation of totalNormAvg
     for (int i = 0; i < clusterNumber; i++){
         if (dimS[i] > 0){
             totalNormAvg[i] = totalNormAvg[i] / dimS[i];
         }
     }
-    cout<<"working20kmd\n";
 
     meanz(centroids, data, S, dimS, n, clusterNumber, dataSize);
     delete[] filledS;
@@ -234,24 +213,20 @@ unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &lab
 string formatClusters(vector<string> &labels, int clusters[], const int dimS[], size_t clusterNumber, size_t dataSize)
 {
     //string table = "Cluster:\n\n";
-    cout<<"working1FC\n";
     ostringstream table;
     int width = min(max(int(labels[0].length() * 5 / 2), 6), 20);
     table << "Clusters:\n\n";
     int processedCluster[clusterNumber];
-    cout<<"working2FC\n";
     for (size_t col = 0; col < clusterNumber; col++)
     {
         table << setw(width) << col;
         processedCluster[col] = 0;
     }
-    cout<<"working3FC\n";
     table << setw(width / 2) << endl;
     for (int i = 0; i < clusterNumber * width; i++)
     {
         table << "·";
     }
-    cout<<"working4FC\n";
     table << endl;
     size_t processed = 0;
     while (processed < dataSize)
@@ -273,7 +248,6 @@ string formatClusters(vector<string> &labels, int clusters[], const int dimS[], 
         table << endl;
 
     }
-    cout<<"working5FC\n";
     return table.str();
 }
 
@@ -285,14 +259,12 @@ void initClusters(int cluster_number, unsigned long n, const double *data, doubl
         for (int j = 0; j < n; j++)
         {
             centroidInit[i][j] = data[randomDataPos * n + j];
-            cout<<centroidInit[i][j]<<"\n";
         }
     }
 }
 
 int main(int argc, char *argv[])
 {
-    cout<<"working\n";
     double ***res;
     double **sum;
     int *S;
@@ -336,7 +308,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    cout<<"working2\n";
+
     // read file
     vector<double> dataVec(0);
     vector<string> dataLabel(0);
@@ -355,7 +327,7 @@ int main(int argc, char *argv[])
     cout << "Clusters number: " << cluster_number << "\n";
     cout << "Element dimensions (n) = " << n << endl;
 
-    cout<<"working3\n";
+
     // Allocate host memory
     S_host = new int[element_count];
     S_host_old = new int[element_count];
@@ -394,46 +366,45 @@ int main(int argc, char *argv[])
     for (int i=0; i<element_count; i++){
         data_bidimensional[i] = new double[n];
     }
-    cout<<"working3.5\n";
     for (int j=0; j<element_count; j++){
         for (int k=0; k<n; k++){
             data_bidimensional[j][k]=data[j*n + k];
         }
     }
 
-    cout<<"working4\n";
+
     //init cluster picking random arrays from data
     srand(time(nullptr));
     initClusters(cluster_number, n, data, centroidInit, element_count); //dovrebbe essere ok
-    cout<<"working5\n";
     //kmeans
     size_t iterazioni = 0;
     double minAvgNorm = DBL_MAX;
     float milliseconds = 0;
     while (totalRuns > 0)
     {
-        cout<<"working6\n";
+        bool converged = true;
         kmeanDevice(S_host, dimS_host, n, totalNormAvg, data_bidimensional, centroidInit, res, sum, element_count, cluster_number);
-            for (int i = 0; i < element_count; i++)
+        for (int i = 0; i < element_count; i++)
+        {
+            if (S_host[i] != S_host_old[i])
             {
-                if (S_host[i] != S_host_old[i])
-                {
-                    break;
-                } else
-                {
-                    totalRuns--;
-                    double totNorm = 0;
-                    for (int h = 0; h < cluster_number; h++)
-                    {
-                        totNorm += totalNormAvg_host[h];
-                    }
-                    if (totNorm < minAvgNorm)
-                    {
-                        minAvgNorm = totNorm;
-                        memcpy(bestS, S_host, sizeof(int) * element_count);
-                    }
-                }
+                converged = false;
+                break;
             }
+        }
+        if (converged){
+            totalRuns--;
+            double totNorm = 0;
+            for (int h = 0; h < cluster_number; h++)
+            {
+                totNorm += totalNormAvg[h];
+            }
+            if (totNorm < minAvgNorm)
+            {
+                minAvgNorm = totNorm;
+                memcpy(bestS, S_host, sizeof(int) * element_count);
+            }
+        }
         int *tmp = S_host_old;
         S_host_old = S_host;
         S_host = tmp;
@@ -451,7 +422,6 @@ int main(int argc, char *argv[])
 
 
     string output = formatClusters(dataLabel, bestS, dimS_host, cluster_number, element_count);
-    cout<<"working24afterOutput\n";
     // write output on a file
     ofstream out_file;
     out_file.open(output_file);
