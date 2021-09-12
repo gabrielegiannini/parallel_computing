@@ -6,8 +6,13 @@
 #include <future>
 #include <filesystem>
 #include <omp.h>
+#include <chrono>
 
 namespace fs = std::filesystem;
+using std::chrono::high_resolution_clock;
+using std::chrono::duration_cast;
+using std::chrono::duration;
+using std::chrono::milliseconds;
 
 #define THREADS 4
 
@@ -186,6 +191,7 @@ vector<string> splitFile(string file, unsigned int splits)
 
 int main(int argc, char *argv[])
 {
+    int ngrams_time = 0;
     int n = 2;
     int numThreads = THREADS;
     bool isNgram = true;
@@ -249,6 +255,8 @@ int main(int argc, char *argv[])
     }
     else
     {
+        //computational effort here
+        auto t1 = high_resolution_clock::now();
         omp_set_dynamic(0);
         omp_set_num_threads(numThreads);
         for (const auto &entry : fs::directory_iterator("./analyze"))
@@ -278,6 +286,9 @@ int main(int argc, char *argv[])
                     }
                 }
             }
+            auto t2 = high_resolution_clock::now();
+            auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
+            ngrams_time += ms_int.count();
             ofstream outFile;
             const string outPath = "analysis-" + path.stem().string() + ".csv";
             outFile.open(fs::path("output/" + outPath));
@@ -288,4 +299,18 @@ int main(int argc, char *argv[])
             }
         }
     }
+    cout << "" << endl;
+    cout << "Completion time ngramsOMP: " << ngrams_time << "µs" <<endl;
+    //cout << "Completion time norma: " << 0<< "µs" <<endl;
+    //cout << "Completion time meanz: " << 0<< "µs" <<endl;
+    //cout << "Tempo altre operazioni in kmean device: " << 0<< "µs" <<endl;
+    cout << "" << endl;
+    cout << "Throughput ngramsOMP: " << 1.0/ngrams_time << " operations executed in 1/Completion time" <<endl;
+    //cout << "Throughput norma: " << 0<< " operations executed in 1/Completion time" <<endl;
+    //cout << "Throughput meanz: " << 0<< " operations executed in 1/Completion time" <<endl;
+    cout << "" << endl;
+    cout << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time" << endl;
+    cout << "" << endl;
+    cout << "Latency: uguale al Service time" << endl;
+    cout << "" << endl;
 }
