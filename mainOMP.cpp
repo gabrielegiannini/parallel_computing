@@ -73,7 +73,7 @@ pair<string, int> compileNgram(int n, const string &file, int initPos)
         }
         offset += newLen;
     }
-    return pair<string, int>(b, charLen + initPos);
+    return {b, charLen + initPos};
 }
 
 //make groups of n words
@@ -96,7 +96,7 @@ pair<string, int> compileNwords(int n, const string &file, int initPos)
         }
         i++; //superiamo lo spazio
     }
-    return pair<string, int>(b, wordLen + initPos);
+    return {b, wordLen + initPos};
 }
 
 unordered_map<string, int> ngrams(int n, const string &file, bool isNGram)
@@ -123,13 +123,13 @@ unordered_map<string, int> ngrams(int n, const string &file, bool isNGram)
     return map;
 }
 
-unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordered_map<string, int> futArr2)
+unordered_map<string, int> mergeMap(unordered_map<string, int> &futArr1, unordered_map<string, int> &futArr2)
 {
     for (const auto &p : futArr2)
     {
         if (futArr1.find(p.first) != futArr1.end())
         {
-            futArr1[p.first] = p.second + futArr2[p.first];
+            futArr1[p.first] = p.second + futArr1[p.first];
             //            futArr1[p.first] = 0;
         }
         else
@@ -143,6 +143,7 @@ unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordere
 
 vector<string> splitFile(string file, unsigned int splits)
 {
+    //    auto t1 = high_resolution_clock::now();
     vector<string> res(0);
     int adjustment = 0;
     unsigned long lengthFrac = file.length() / splits;
@@ -187,6 +188,9 @@ vector<string> splitFile(string file, unsigned int splits)
     // tutto il resto del file
     subFile = file.substr(pos, 2 * lengthFrac);
     res.push_back(subFile);
+    //    auto t2 = high_resolution_clock::now();
+    //    auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
+    //    cout << "Split file duration: " << ms_int.count() << "\n\n";
     return res;
 }
 
@@ -257,7 +261,6 @@ int main(int argc, char *argv[])
     else
     {
         //computational effort here
-        auto t1 = high_resolution_clock::now();
         omp_set_dynamic(0);
         omp_set_num_threads(numThreads);
         for (const auto &entry : fs::directory_iterator("./analyze"))
@@ -269,39 +272,33 @@ int main(int argc, char *argv[])
             }
             fToString = fileToString(path);
             vector<string> fileSplitted = splitFile(fToString, numThreads);
-            vector<unordered_map<string, int>> results(fileSplitted.size());
+            unordered_map<string, int> results[fileSplitted.size()];
             //            auto t1 = high_resolution_clock::now();
-            //default(none) shared(fileSplitted, results, n,isNgram)
+            const long maxIndex = (long)(log2(fileSplitted.size()));
             unordered_map<string, int> map;
-            //cout << "Inizio sezione parallela\n";
-            int k = 1;
-#pragma omp parallel default(none) shared(fileSplitted, results, n,isNgram,cout,map, k)
+            auto t1 = high_resolution_clock::now();
+#pragma omp parallel default(none) shared(fileSplitted, results, n,isNgram,cout,maxIndex,map,numThreads)
             {
+                //#pragma omp parallel for schedule(dynamic, 1) default(none) shared(fileSplitted, results, n,isNgram,cout,maxIndex,map,numThreads)
 #pragma omp for schedule(dynamic, 1)
-                for (int i = 0; i < fileSplitted.size(); i++)
-                {
-                    results[i] = ngrams(n, fileSplitted[i], isNgram);
-                }
-                //for (int k = 1; k < fileSplitted.size(); k << 1)
-                //{
-#pragma omp for schedule(dynamic, 1) // default(none) shared(results,k,cout)
-                    for (int i = 0; i < results.size(); i++)
-                    {
-                        if(k<fileSplitted.size()) {
-                            if ((i ^ k) > i && (i ^ k) < results.size()) {
-                                mergeMap(results[i], results[i ^ k]);
-                            }
-                        }else{
-                            i = results.size();
-                        }
-                        if(i == results.size() && k<fileSplitted.size()){
-                            k = k<<1;
-                            i=-1;
-                        }
-                    }
-                //}
+for (int i = 0; i < fileSplitted.size(); i++)
+{
+    results[i] = ngrams(n, fileSplitted[i], isNgram);
+}
+for (int k = 1; k < numThreads; k = k << 1)
+{
+    //#pragma omp parallel for schedule(dynamic, 1)  default(none) shared(results,k,cout,numThreads)
+#pragma omp for schedule(dynamic, 1)
+for (int i = 0; i < numThreads; i++)
+{
+    //cout << "H = " << h << ", K = " << k << endl;
+    if ((i ^ k) > i && (i ^ k) < numThreads)
+    {
+        mergeMap(results[i], results[i ^ k]);
+    }
+}
+}
             }
-            //cout << "\nFine sezione parallela\n\n";
             auto t2 = high_resolution_clock::now();
             auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
             ngrams_time += ms_int.count();
