@@ -41,12 +41,10 @@ int charLenght(char ch)
     if (test < 128)
     {
         charLenght = 1;
-    }
-    else if (test < 224)
+    } else if (test < 224)
     {
         charLenght = 2;
-    }
-    else if (test < 240)
+    } else if (test < 240)
     {
         charLenght = 3;
     }
@@ -82,15 +80,15 @@ pair<string, int> compileNwords(int n, const string &file, int initPos)
     string b;
     int wordLen;
     int i = initPos;
-    for(int k = 0; k < n; k++)
+    for (int k = 0; k < n; k++)
     {
-        while(i < file.length() && file[i] != ' ' && file[i] != '\0')
+        while (i < file.length() && file[i] != ' ' && file[i] != '\0')
         {
             b.push_back(file[i]);
             i++;
         }
         b.push_back(' ');
-        if(k==0)
+        if (k == 0)
         {
             wordLen = b.size();
         }
@@ -114,8 +112,7 @@ unordered_map<string, int> ngrams(int n, const string &file, bool isNGram)
         if (map.find(a) == map.end())
         {
             map[a] = 1;
-        }
-        else
+        } else
         {
             map[a] = map[a] + 1;
         }
@@ -131,8 +128,7 @@ unordered_map<string, int> mergeMap(unordered_map<string, int> &futArr1, unorder
         {
             futArr1[p.first] = p.second + futArr1[p.first];
             //            futArr1[p.first] = 0;
-        }
-        else
+        } else
         {
             futArr1[p.first] = p.second;
             //            futArr1[p.first] = 0;
@@ -173,7 +169,7 @@ vector<string> splitFile(string file, unsigned int splits)
         subFile = file.substr(pos, lengthFrac + 1);
         adjustment = 0;
         while ((pos + lengthFrac + 1 + adjustment) < file.length() &&
-        (file[pos + lengthFrac + 1 + adjustment] & 0xC0) == 128)
+               (file[pos + lengthFrac + 1 + adjustment] & 0xC0) == 128)
         {
             subFile.push_back(file[pos + lengthFrac + 1 + adjustment]);
             adjustment++;
@@ -219,15 +215,13 @@ int main(int argc, char *argv[])
                 if (string(argv[j]) == "hw")
                 {
                     numThreads = thread::hardware_concurrency();
-                }
-                else
+                } else
                 {
                     cerr << "il parametro passato non è un numero valido di threads" << endl;
                     exit(1);
                 }
             }
-        }
-        else if (token == "-n")
+        } else if (token == "-n")
         {
             try
             {
@@ -238,12 +232,10 @@ int main(int argc, char *argv[])
                 cerr << "il parametro passato non è un numero valido" << endl;
                 exit(1);
             }
-        }
-        else if(token == "-w")
+        } else if (token == "-w")
         {
             isNgram = false;
-        }
-        else
+        } else
         {
             cerr << "opzione " << token << " non riconosciuta" << endl;
             exit(2);
@@ -257,8 +249,7 @@ int main(int argc, char *argv[])
     {
         cout << "Put all the .txt files to be analyzed in an 'analyze' directory:" << endl;
         cout << "nothing to analyze!" << endl;
-    }
-    else
+    } else
     {
         //computational effort here
         omp_set_dynamic(0);
@@ -274,30 +265,27 @@ int main(int argc, char *argv[])
             vector<string> fileSplitted = splitFile(fToString, numThreads);
             unordered_map<string, int> results[fileSplitted.size()];
             //            auto t1 = high_resolution_clock::now();
-            const long maxIndex = (long)(log2(fileSplitted.size()));
+            const long maxIndex = (long) (log2(fileSplitted.size()));
             unordered_map<string, int> map;
             auto t1 = high_resolution_clock::now();
-#pragma omp parallel default(none) shared(fileSplitted, results, n,isNgram,cout,maxIndex,map,numThreads)
+#pragma omp parallel default(none) shared(fileSplitted, results, n, isNgram, cout, maxIndex, map, numThreads)
             {
-                //#pragma omp parallel for schedule(dynamic, 1) default(none) shared(fileSplitted, results, n,isNgram,cout,maxIndex,map,numThreads)
 #pragma omp for schedule(dynamic, 1)
-for (int i = 0; i < fileSplitted.size(); i++)
-{
-    results[i] = ngrams(n, fileSplitted[i], isNgram);
-}
-for (int k = 1; k < numThreads; k = k << 1)
-{
-    //#pragma omp parallel for schedule(dynamic, 1)  default(none) shared(results,k,cout,numThreads)
+                for (int i = 0; i < fileSplitted.size(); i++)
+                {
+                    results[i] = ngrams(n, fileSplitted[i], isNgram);
+                }
+                for (int k = 1; k < numThreads; k = k << 1)
+                {
 #pragma omp for schedule(dynamic, 1)
-for (int i = 0; i < numThreads; i++)
-{
-    //cout << "H = " << h << ", K = " << k << endl;
-    if ((i ^ k) > i && (i ^ k) < numThreads)
-    {
-        mergeMap(results[i], results[i ^ k]);
-    }
-}
-}
+                    for (int i = 0; i < numThreads; i++)
+                    {
+                        if ((i ^ k) > i && (i ^ k) < numThreads)
+                        {
+                            mergeMap(results[i], results[i ^ k]);
+                        }
+                    }
+                }
             }
             auto t2 = high_resolution_clock::now();
             auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
@@ -305,24 +293,26 @@ for (int i = 0; i < numThreads; i++)
             ofstream outFile;
             const string outPath = "analysis-" + path.stem().string() + ".csv";
             outFile.open(fs::path("output/" + outPath));
-            outFile << n << "-gram\tOccurrencies" << endl;
+            outFile << n << "-gram\tOccurrencies" << "\n";
             for (const auto &p : results[0])
             {
-                outFile << p.first << "\t" << p.second << endl;
+                outFile << p.first << "\t" << p.second << "\n";
             }
         }
     }
     cout << "" << endl;
-    cout << "Completion time ngramsOMP: " << ngrams_time << "µs" <<endl;
+    cout << "Completion time ngramsOMP: " << ngrams_time << "µs" << endl;
     //cout << "Completion time norma: " << 0<< "µs" <<endl;
     //cout << "Completion time meanz: " << 0<< "µs" <<endl;
     //cout << "Tempo altre operazioni in kmean device: " << 0<< "µs" <<endl;
     cout << "" << endl;
-    cout << "Throughput ngramsOMP: " << 1.0/ngrams_time << " operations executed in 1/Completion time" <<endl;
+    cout << "Throughput ngramsOMP: " << 1.0 / ngrams_time << " operations executed in 1/Completion time" << endl;
     //cout << "Throughput norma: " << 0<< " operations executed in 1/Completion time" <<endl;
     //cout << "Throughput meanz: " << 0<< " operations executed in 1/Completion time" <<endl;
     cout << "" << endl;
-    cout << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time" << endl;
+    cout
+            << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time"
+            << endl;
     cout << "" << endl;
     cout << "Latency: uguale al Service time" << endl;
     cout << "" << endl;

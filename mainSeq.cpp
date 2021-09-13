@@ -242,25 +242,27 @@ int main(int argc, char *argv[])
             ofstream outFile;
             const string outPath = "analysis-" + path.stem().string() + ".csv";
             outFile.open(fs::path("output/" + outPath));
-            outFile << n << "-gram\tOccurrencies" << endl;
+            outFile << n << "-gram\tOccurrencies" << "\n";
             for (const auto &p : map)
             {
-                outFile << p.first << "\t" << p.second << endl;
+                outFile << p.first << "\t" << p.second << "\n";
             }
         }
 
     }
     cout << "" << endl;
-    cout << "Completion time ngramsOMP: " << ngrams_time << "µs" <<endl;
+    cout << "Completion time ngramsOMP: " << ngrams_time << "µs" << endl;
     //cout << "Completion time norma: " << 0<< "µs" <<endl;
     //cout << "Completion time meanz: " << 0<< "µs" <<endl;
     //cout << "Tempo altre operazioni in kmean device: " << 0<< "µs" <<endl;
     cout << "" << endl;
-    cout << "Throughput ngramsOMP: " << 1.0/ngrams_time << " operations executed in 1/Completion time" <<endl;
+    cout << "Throughput ngramsOMP: " << 1.0 / ngrams_time << " operations executed in 1/Completion time" << endl;
     //cout << "Throughput norma: " << 0<< " operations executed in 1/Completion time" <<endl;
     //cout << "Throughput meanz: " << 0<< " operations executed in 1/Completion time" <<endl;
     cout << "" << endl;
-    cout << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time" << endl;
+    cout
+            << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time"
+            << endl;
     cout << "" << endl;
     cout << "Latency: uguale al Service time" << endl;
     cout << "" << endl;

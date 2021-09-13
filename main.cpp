@@ -73,7 +73,7 @@ private:
     const int n;
 
 public:
-    pair<string, int> (NGramFreqComputer::*compile) (const string &file, const int initPos) const;
+    pair<string, int> (NGramFreqComputer::*compile)(const string &file, const int initPos) const;
 
     //make groups of n characters
     [[nodiscard]] pair<string, int> compileNgram(const string &file, const int initPos) const
@@ -104,15 +104,15 @@ public:
         string b;
         int wordLen;
         int i = initPos;
-        for(int k = 0; k < n; k++)
+        for (int k = 0; k < n; k++)
         {
-            while(i < file.length() && file[i] != ' ' && file[i] != '\0')
+            while (i < file.length() && file[i] != ' ' && file[i] != '\0')
             {
                 b.push_back(file[i]);
                 i++;
             }
             b.push_back(' ');
-            if(k==0)
+            if (k == 0)
             {
                 wordLen = b.size();
             }
@@ -176,9 +176,9 @@ class FileSplitter
     future<unordered_map<string, int>> fut;
 
 public:
-    FileSplitter(const fs::path& path, const unsigned splits, NGramFreqComputer &freqComputer) : path(path),
-                                                                                               splits(splits),
-                                                                                               computer(freqComputer)
+    FileSplitter(const fs::path &path, const unsigned splits, NGramFreqComputer &freqComputer) : path(path),
+                                                                                                 splits(splits),
+                                                                                                 computer(freqComputer)
     {
         string s;
         ifstream myfile;
@@ -234,7 +234,7 @@ public:
             vector<future<unordered_map<string, int>>> toWaitForReduction;
             const unsigned int size = result.size();
             unsigned int k = 1;
-            unsigned int target = (i - 1) ^k;
+            unsigned int target = (i - 1) ^ k;
             while ((splits - 1 - target) < size && target > (i - 1))
             {
                 toWaitForReduction.push_back(std::move(result[splits - 1 - target]));
@@ -269,10 +269,10 @@ public:
 //        future<unordered_map<string, int>> fut = splitFile();
         unordered_map<string, int> map = fut.get();
         stringstream outString;
-        outString << computer.getN() << "-gram\tOccurrencies" << endl;
+        outString << computer.getN() << "-gram\tOccurrencies" << "\n";
         for (const auto &p : map)
         {
-            outString << p.first << "\t" << p.second << endl;
+            outString << p.first << "\t" << p.second << "\n";
         }
         return outString.str();
     }
@@ -323,12 +323,10 @@ int main(int argc, char *argv[])
                 cerr << "il parametro passato non è un numero valido" << endl;
                 exit(1);
             }
-        }
-        else if(token == "-w")
+        } else if (token == "-w")
         {
             isNgram = false;
-        }
-        else
+        } else
         {
             cerr << "opzione " << token << " non riconosciuta" << endl;
             exit(2);
@@ -370,16 +368,18 @@ int main(int argc, char *argv[])
         }
     }
     cout << "" << endl;
-    cout << "Completion time ngrams: " << ngrams_time<< "µs" <<endl;
+    cout << "Completion time ngrams: " << ngrams_time << "µs" << endl;
     //cout << "Completion time norma: " << 0<< "µs" <<endl;
     //cout << "Completion time meanz: " << 0<< "µs" <<endl;
     //cout << "Tempo altre operazioni in kmean device: " << 0<< "µs" <<endl;
     cout << "" << endl;
-    cout << "Throughput ngrams: " << 1.0/ngrams_time << " operations executed in 1/Completion time" <<endl;
+    cout << "Throughput ngrams: " << 1.0 / ngrams_time << " operations executed in 1/Completion time" << endl;
     //cout << "Throughput norma: " << 0<< " operations executed in 1/Completion time" <<endl;
     //cout << "Throughput meanz: " << 0<< " operations executed in 1/Completion time" <<endl;
     cout << "" << endl;
-    cout << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time" << endl;
+    cout
+            << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time"
+            << endl;
     cout << "" << endl;
     cout << "Latency: uguale al Service time" << endl;
     cout << "" << endl;
