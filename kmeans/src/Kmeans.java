@@ -29,7 +29,7 @@ public class Kmeans {
     }
 
     public void kmean(long[] metrics) {
-        S = new ArrayList[means.length];// dimensione clusterNumber. S e' array list di array list
+        S = new ArrayList[means.length];// dimensione clusterNumber. S e' array di array list
         for (int j = 0; j < S.length; j++) {
             S[j] = new ArrayList<>();
         }
@@ -78,6 +78,7 @@ public class Kmeans {
     public double[] executeKMeans(long[] metrics) {
         long startTime = System.nanoTime();
         do {
+            F = S;
             oneStepKMeans(metrics);
         } while (notConverged());
         long endTime = System.nanoTime();
@@ -88,10 +89,11 @@ public class Kmeans {
     public void oneStepKMeans(long[] metrics) {
         kmean(metrics);
         metrics[2] += means();
-        F = S;
+//        F = S;
     }
 
     public boolean notConverged() {
+        if (F == null) return true;
         boolean no = false;
         for (int i = 0; i < F.length; i++) {
             if (!F[i].equals(S[i])) {
@@ -152,7 +154,7 @@ public class Kmeans {
     }
 
     public static void main(String[] args) throws Exception {
-        long[] metrics = {0,0,0,0};
+        long[] metrics = {0, 0, 0, 0};
         long startTime = System.nanoTime();
         List<String> positionals = new LinkedList<String>();
 

@@ -138,7 +138,7 @@ public class Common {
         System.out.println("Executed " + EXECUTIONS_COUNT + " Kmeans, on " + THREAD_COUNT + " threads (if applicable)");
         System.out.println("Cluster number: " + clustersN);
         System.out.println("Total Kmeans execution count: " + EXECUTIONS_COUNT);
-        System.out.println("Total execution time in µs : " + metrics[0] / UNIT_DIVIDER + ", average on kmean execution: " + metrics[1] / EXECUTIONS_COUNT / UNIT_DIVIDER);
+        System.out.println("Total execution time in µs : " + metrics[0] / UNIT_DIVIDER + ", average on kmean execution: " + metrics[0] / EXECUTIONS_COUNT / UNIT_DIVIDER);
         System.out.println("Norm execution time in µs : " + metrics[1] / UNIT_DIVIDER + ", average on kmean execution: " + metrics[1] / EXECUTIONS_COUNT / UNIT_DIVIDER);
         System.out.println("Means execution time in µs : " + metrics[2] / UNIT_DIVIDER + ", average on kmean execution: " + metrics[2] / EXECUTIONS_COUNT / UNIT_DIVIDER);
         System.out.println("Kmean execution time in µs : " + metrics[3] / UNIT_DIVIDER + ", average on kmean execution: " + metrics[3] / EXECUTIONS_COUNT / UNIT_DIVIDER);
