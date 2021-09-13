@@ -274,24 +274,32 @@ int main(int argc, char *argv[])
             //default(none) shared(fileSplitted, results, n,isNgram)
             unordered_map<string, int> map;
             //cout << "Inizio sezione parallela\n";
-#pragma omp parallel default(none) shared(fileSplitted, results, n,isNgram,cout,map)
+            int k = 1;
+#pragma omp parallel default(none) shared(fileSplitted, results, n,isNgram,cout,map, k)
             {
 #pragma omp for schedule(dynamic, 1)
                 for (int i = 0; i < fileSplitted.size(); i++)
                 {
                     results[i] = ngrams(n, fileSplitted[i], isNgram);
                 }
-                for (int k = 1; k < fileSplitted.size(); k << 1)
-                {
+                //for (int k = 1; k < fileSplitted.size(); k << 1)
+                //{
 #pragma omp for schedule(dynamic, 1) // default(none) shared(results,k,cout)
                     for (int i = 0; i < results.size(); i++)
                     {
-                        if ((i ^ k) > i && (i ^ k) < results.size())
-                        {
-                            mergeMap(results[i], results[i ^ k]);
+                        if(k<fileSplitted.size()) {
+                            if ((i ^ k) > i && (i ^ k) < results.size()) {
+                                mergeMap(results[i], results[i ^ k]);
+                            }
+                        }else{
+                            i = results.size();
+                        }
+                        if(i == results.size() && k<fileSplitted.size()){
+                            k = k<<1;
+                            i=-1;
                         }
                     }
-                }
+                //}
             }
             //cout << "\nFine sezione parallela\n\n";
             auto t2 = high_resolution_clock::now();
