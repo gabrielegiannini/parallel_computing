@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <omp.h>
 #include <chrono>
+#include <cmath>
 
 namespace fs = std::filesystem;
 using std::chrono::high_resolution_clock;
@@ -124,20 +125,20 @@ unordered_map<string, int> ngrams(int n, const string &file, bool isNGram)
 
 unordered_map<string, int> mergeMap(unordered_map<string, int> futArr1, unordered_map<string, int> futArr2)
 {
-    for (const auto &p : futArr1)
+    for (const auto &p : futArr2)
     {
-        if (futArr2.find(p.first) != futArr2.end())
+        if (futArr1.find(p.first) != futArr1.end())
         {
-            futArr2[p.first] = futArr2[p.first] + futArr1[p.first];
-//            futArr1[p.first] = 0;
+            futArr1[p.first] = p.second + futArr2[p.first];
+            //            futArr1[p.first] = 0;
         }
         else
         {
-            futArr2[p.first] = futArr1[p.first];
-//            futArr1[p.first] = 0;
+            futArr1[p.first] = p.second;
+            //            futArr1[p.first] = 0;
         }
     }
-    return futArr2;
+    return futArr1;
 }
 
 vector<string> splitFile(string file, unsigned int splits)
@@ -171,7 +172,7 @@ vector<string> splitFile(string file, unsigned int splits)
         subFile = file.substr(pos, lengthFrac + 1);
         adjustment = 0;
         while ((pos + lengthFrac + 1 + adjustment) < file.length() &&
-               (file[pos + lengthFrac + 1 + adjustment] & 0xC0) == 128)
+        (file[pos + lengthFrac + 1 + adjustment] & 0xC0) == 128)
         {
             subFile.push_back(file[pos + lengthFrac + 1 + adjustment]);
             adjustment++;
@@ -191,7 +192,7 @@ vector<string> splitFile(string file, unsigned int splits)
 
 int main(int argc, char *argv[])
 {
-    int ngrams_time = 0;
+    long ngrams_time = 0;
     int n = 2;
     int numThreads = THREADS;
     bool isNgram = true;
@@ -269,23 +270,30 @@ int main(int argc, char *argv[])
             fToString = fileToString(path);
             vector<string> fileSplitted = splitFile(fToString, numThreads);
             vector<unordered_map<string, int>> results(fileSplitted.size());
-#pragma omp parallel for schedule(dynamic, 1) default(none) shared(fileSplitted, results, n,isNgram)
-            for (int i = 0; i < fileSplitted.size(); i++)
-            {
-                results[i] = ngrams(n, fileSplitted[i], isNgram);
-            }
+            //            auto t1 = high_resolution_clock::now();
+            //default(none) shared(fileSplitted, results, n,isNgram)
             unordered_map<string, int> map;
-            for (int k = 1; k < fileSplitted.size(); k = k << 1)
+            //cout << "Inizio sezione parallela\n";
+#pragma omp parallel default(none) shared(fileSplitted, results, n,isNgram,cout,map)
             {
-#pragma omp parallel for schedule(dynamic, 1) default(none) shared(results,k)
-                for (int i = 0; i < results.size(); i++)
+#pragma omp for schedule(dynamic, 1)
+                for (int i = 0; i < fileSplitted.size(); i++)
                 {
-                    if ((i ^ k) > i && (i ^ k) < results.size())
+                    results[i] = ngrams(n, fileSplitted[i], isNgram);
+                }
+                for (int k = 1; k < fileSplitted.size(); k << 1)
+                {
+#pragma omp for schedule(dynamic, 1) // default(none) shared(results,k,cout)
+                    for (int i = 0; i < results.size(); i++)
                     {
-                        results[i] = mergeMap(results[i], results[i ^ k]);
+                        if ((i ^ k) > i && (i ^ k) < results.size())
+                        {
+                            mergeMap(results[i], results[i ^ k]);
+                        }
                     }
                 }
             }
+            //cout << "\nFine sezione parallela\n\n";
             auto t2 = high_resolution_clock::now();
             auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
             ngrams_time += ms_int.count();

@@ -5,3 +5,5 @@ output
 ngrams-omp
 ngrams-seq
 out
+.DS_Store
+.idea/*
