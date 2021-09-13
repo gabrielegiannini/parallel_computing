@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.Map.Entry;
 
+
 public class Kmeans {
 
     private final int clustersNumber;
@@ -27,18 +28,19 @@ public class Kmeans {
         totalNormAvg = new double[clustersNumber];
     }
 
-    public void kmean() {
+    public void kmean(long[] metrics) {
         S = new ArrayList[means.length];// dimensione clusterNumber. S e' array list di array list
         for (int j = 0; j < S.length; j++) {
             S[j] = new ArrayList<>();
         }
-        for (int h = 0; h < totalNormAvg.length; h++) {// array delle norme 
-            totalNormAvg[h] = 0;
-        }
+        // array delle norme
+        Arrays.fill(totalNormAvg, 0);
+
         for (Entry<String, Double[]> entry : data.entrySet()) {
             int posMin = 0;
 
             double min = Double.MAX_VALUE;
+            long startTime = System.nanoTime();
             for (int h = 0; h < means.length; h++) {
                 double norm = norm(entry.getValue(), means[h]);
                 if (norm < min) {
@@ -46,6 +48,8 @@ public class Kmeans {
                     posMin = h;
                 }
             }
+            long endTime = System.nanoTime();
+            metrics[1] += (endTime - startTime);
             S[posMin].add(entry.getKey());
             totalNormAvg[posMin] = totalNormAvg[posMin] + min;
         }
@@ -56,7 +60,8 @@ public class Kmeans {
         }
     }
 
-    public void means() {//calcola centroidi
+    public long means() {//calcola centroidi
+        long startTime = System.nanoTime();
         for (int i = 0; i < means.length; i++) {
             for (int j = 0; j < means[i].length; j++) {
                 means[i][j] = 0;
@@ -66,18 +71,23 @@ public class Kmeans {
                 means[i][j] = means[i][j] / S[i].size();
             }
         }
+        long endTime = System.nanoTime();
+        return (endTime - startTime);
     }
 
-    public double[] executeKMeans() {
+    public double[] executeKMeans(long[] metrics) {
+        long startTime = System.nanoTime();
         do {
-            oneStepKMeans();
+            oneStepKMeans(metrics);
         } while (notConverged());
+        long endTime = System.nanoTime();
+        metrics[3] += (endTime - startTime);
         return getTotalNormAvg();
     }
 
-    public void oneStepKMeans() {
-        kmean();
-        means();
+    public void oneStepKMeans(long[] metrics) {
+        kmean(metrics);
+        metrics[2] += means();
         F = S;
     }
 
@@ -142,6 +152,7 @@ public class Kmeans {
     }
 
     public static void main(String[] args) throws Exception {
+        long[] metrics = {0,0,0,0};
         long startTime = System.nanoTime();
         List<String> positionals = new LinkedList<String>();
 
@@ -159,7 +170,7 @@ public class Kmeans {
             } else {
                 algorithm.initMeans();
             }
-            double[] totalNormAvg = algorithm.executeKMeans();
+            double[] totalNormAvg = algorithm.executeKMeans(metrics);
 
             double total = 0;
             for (double avg : totalNormAvg) {
@@ -173,8 +184,8 @@ public class Kmeans {
         }
         System.out.println(Common.formatTable(G));
         long endTime = System.nanoTime();
-        long timeElapsed = endTime - startTime;
-        System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);
+        metrics[0] = endTime - startTime;
+        Common.printMetrics(metrics, clustersNumber);
     }
 
     public static double norm(Double[] a, double[] b) {

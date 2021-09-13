@@ -21,6 +21,7 @@ public class MainWithThreads {
         final int execSurplus = Common.EXECUTIONS_COUNT - execPerThread * Common.THREAD_COUNT;
         Thread[] threads = new Thread[Common.THREAD_COUNT];
         int c = 0;
+        long[] metrics = {0,0,0,0};
         while (c < threads.length) {
             final int finalC = c;
             Thread t = new Thread(() -> {
@@ -42,7 +43,7 @@ public class MainWithThreads {
                     } else {
                         algorithm.initMeans();
                     }
-                    totalNormAvg[a] = algorithm.executeKMeans();
+                    totalNormAvg[a] = algorithm.executeKMeans(metrics);
                     F[a] = algorithm.getClusters();
                     a++;
                 }
@@ -83,8 +84,8 @@ public class MainWithThreads {
         }
         System.out.println(Common.formatTable(G[globalAvgIndex]));
         long endTime = System.nanoTime();
-        long timeElapsed = endTime - startTime;
-        System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);
+       metrics[0] = endTime - startTime;
+        Common.printMetrics(metrics, clustersNumber);
     }
 
 }

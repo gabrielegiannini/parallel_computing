@@ -1,5 +1,7 @@
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.Executors;
 
 public class MainWithPool {
 
@@ -14,10 +16,12 @@ public class MainWithPool {
 
         final boolean finalInitRandomClusters = initRandomClusters;
         final int finalN = n;
-        KMeanExecutor pool = new KMeanExecutor(Common.THREAD_COUNT);
+//        KMeanExecutor pool = new KMeanExecutor(Common.THREAD_COUNT);
+        ExecutorCompletionService<Kmeans> pool = new ExecutorCompletionService<>(Executors.newFixedThreadPool(Common.THREAD_COUNT));
         int c = 0;
+        long[] metrics = {0,0,0,0};
         while (c < Common.EXECUTIONS_COUNT) {
-            pool.schedule(() -> {
+            pool.submit(() -> {
                 Kmeans algorithm = null;
                 try {
                     algorithm = new Kmeans(data, clustersNumber, finalN);
@@ -29,7 +33,7 @@ public class MainWithPool {
                 } else {
                     algorithm.initMeans();
                 }
-                algorithm.executeKMeans();
+                algorithm.executeKMeans(metrics);
                 return algorithm;
             });
             c++;
@@ -38,7 +42,7 @@ public class MainWithPool {
         List<String>[] FINAL = null;
         for (int i = 0; i < Common.EXECUTIONS_COUNT; i++) {
             double avg = 0;
-            Kmeans task = pool.getNextTerminated();
+            Kmeans task = pool.take().get();
             double[] normAvg = task.getTotalNormAvg();
             for (int j = 0; j < normAvg.length; j++) {
                 avg = avg + normAvg[j];
@@ -49,9 +53,9 @@ public class MainWithPool {
             }
         }
         System.out.println(Common.formatTable(FINAL));
-        pool.shutdown();
+        //pool.shutdown();
         long endTime = System.nanoTime();
-        long timeElapsed = endTime - startTime;
-        System.out.println("Execution time in milliseconds : " + timeElapsed / 1000000);
+        metrics[0] = endTime - startTime;
+        Common.printMetrics(metrics, clustersNumber);
     }
 }

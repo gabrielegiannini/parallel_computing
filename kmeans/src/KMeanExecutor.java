@@ -27,8 +27,9 @@ public class KMeanExecutor {
         result = results.parallelStream().filter(f -> f.isDone()).findAny();
         if (result.isPresent()) {
             try {
-                results.remove(result);
-                return result.get().get();
+                Future<Kmeans> f = result.get();
+                results.remove(f);
+                return f.get();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             } catch (ExecutionException e) {
