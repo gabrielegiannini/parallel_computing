@@ -77,12 +77,15 @@ public class Kmeans {
 
     public double[] executeKMeans(long[] metrics) {
         long startTime = System.nanoTime();
+        long counter = 0;
         do {
             F = S;
             oneStepKMeans(metrics);
+            counter++;
         } while (notConverged());
         long endTime = System.nanoTime();
         metrics[3] += (endTime - startTime);
+        metrics[4] += counter;
         return getTotalNormAvg();
     }
 
@@ -154,7 +157,7 @@ public class Kmeans {
     }
 
     public static void main(String[] args) throws Exception {
-        long[] metrics = {0, 0, 0, 0};
+        long[] metrics = {0, 0, 0, 0, 0};
         long startTime = System.nanoTime();
         List<String> positionals = new LinkedList<String>();
 
@@ -184,7 +187,8 @@ public class Kmeans {
             }
             c++;
         }
-        System.out.println(Common.formatTable(G));
+//        System.out.println(Common.formatTable(G));
+        Common.printList(G);
         long endTime = System.nanoTime();
         metrics[0] = endTime - startTime;
         Common.printMetrics(metrics, clustersNumber);

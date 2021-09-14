@@ -21,7 +21,7 @@ public class MainWithThreads {
         final int execSurplus = Common.EXECUTIONS_COUNT - execPerThread * Common.THREAD_COUNT;
         Thread[] threads = new Thread[Common.THREAD_COUNT];
         int c = 0;
-        long[] metrics = {0,0,0,0};
+        long[] metrics = {0, 0, 0, 0, 0};
         while (c < threads.length) {
             final int finalC = c;
             Thread t = new Thread(() -> {
@@ -49,7 +49,7 @@ public class MainWithThreads {
                 }
 
                 for (int i = 0; i < totalNormAvg.length; i++) {
-                    if(i >= execPerThread && finalC >= execSurplus)
+                    if (i >= execPerThread && finalC >= execSurplus)
                         break;
                     double avg = 0;
                     for (int j = 0; j < totalNormAvg[i].length; j++) {
@@ -82,9 +82,10 @@ public class MainWithThreads {
                 globalAvgIndex = i;
             }
         }
-        System.out.println(Common.formatTable(G[globalAvgIndex]));
+//        System.out.println(Common.formatTable(G[globalAvgIndex]));
+        Common.printList(G[globalAvgIndex]);
         long endTime = System.nanoTime();
-       metrics[0] = endTime - startTime;
+        metrics[0] = endTime - startTime;
         Common.printMetrics(metrics, clustersNumber);
     }
 

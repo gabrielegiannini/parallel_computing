@@ -252,8 +252,6 @@ string formatClusters(vector<string> &labels, int clusters[], const int dimS[], 
     {
         for (size_t col = 0; col < clusterNumber; col++)
         {
-//            cout<<"dimS[col]: "<<dimS[col]<<"\n";
-//            cout<<"processedCluster[col]: "<<processedCluster[col]<<"\n";
             if (dimS[col] > processedCluster[col])
             {
                 table << setw(width) << labels[clusters[processed]];
@@ -284,16 +282,15 @@ void initClusters(int cluster_number, unsigned long n, const double *data, doubl
 
 int main(int argc, char *argv[])
 {
+    auto t1 = chrono::high_resolution_clock::now();
     double ***res;
     double **sum;
-    int *S;
     int *S_host;
     int *S_host_old;
     int *dimS_host;
     double *totalNormAvg;
     double **centroids;
     double **centroidInit;
-    double *data_d;
     double **data_bidimensional;
 
     int cluster_number = DEFAULT_CLUSTER_NUMBER;
@@ -338,10 +335,6 @@ int main(int argc, char *argv[])
     double data[dataVec.size()];
     std::copy(dataVec.begin(), dataVec.end(), data);
     size_t element_count = dataLabel.size();
-//    for (string elem: dataLabel)
-//    {
-//        cout << elem << endl;
-//    }
     cout << "Data element number: " << element_count << "\n";
     cout << "Clusters number: " << cluster_number << "\n";
     cout << "Element dimensions (n) = " << n << endl;
@@ -439,20 +432,11 @@ int main(int argc, char *argv[])
         int *tmp2 = S_host;
         S_host_old = tmp2;
         S_host = tmp;
-//        cout<<"S: "<<S_host<<"\n";
-//        cout<<"S old: "<<S_host_old<<"\n";
         iterazioni++;
     }
 
-
-    int sommaDim = 0;
-    for (int i = 0; i < cluster_number; i++)
-    {
-        cout << dimS_host[i] << endl;
-        sommaDim+=dimS_host[i];
-    }
-    cout << "Totale dimS: " << sommaDim << "\n";
-
+    auto t2 = chrono::high_resolution_clock::now();
+    auto elapsed = chrono::duration_cast<chrono::microseconds>(t2 - t1).count();
 
     string output = formatClusters(dataLabel, bestS, dimS_host, cluster_number, element_count);
     // write output on a file
@@ -475,9 +459,9 @@ int main(int argc, char *argv[])
     delete []sum;
     delete [] centroids;
 
-
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
     cout << "" << endl;
+    cout << "Total execution time: " << elapsed << " µs (" << elapsed / 1000000.0l << " s)." << endl;
     cout << "Completion time kmean device: " << kmeans_device_time<< "µs" <<endl;
     cout << "Completion time norma: " << norma_time<< "µs" <<endl;
     cout << "Completion time meanz: " << meanz_time<< "µs" <<endl;

@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainWithPool {
@@ -17,9 +18,10 @@ public class MainWithPool {
         final boolean finalInitRandomClusters = initRandomClusters;
         final int finalN = n;
 //        KMeanExecutor pool = new KMeanExecutor(Common.THREAD_COUNT);
-        ExecutorCompletionService<Kmeans> pool = new ExecutorCompletionService<>(Executors.newFixedThreadPool(Common.THREAD_COUNT));
+        final var executor = Executors.newFixedThreadPool(Common.THREAD_COUNT);
+        ExecutorCompletionService<Kmeans> pool = new ExecutorCompletionService<>(executor);
         int c = 0;
-        long[] metrics = {0,0,0,0};
+        long[] metrics = {0, 0, 0, 0, 0};
         while (c < Common.EXECUTIONS_COUNT) {
             pool.submit(() -> {
                 Kmeans algorithm = null;
@@ -52,8 +54,9 @@ public class MainWithPool {
                 FINAL = task.getClusters();
             }
         }
-        System.out.println(Common.formatTable(FINAL));
-        //pool.shutdown();
+//        System.out.println(Common.formatTable(FINAL));
+        Common.printList(FINAL);
+        executor.shutdown();
         long endTime = System.nanoTime();
         metrics[0] = endTime - startTime;
         Common.printMetrics(metrics, clustersNumber);

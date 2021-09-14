@@ -7,7 +7,7 @@ import java.util.*;
 public class Common {
 
     public static final int THREAD_COUNT = 16;
-    public static final int EXECUTIONS_COUNT = 10000;
+    public static final int EXECUTIONS_COUNT = 1000;
     public static final long UNIT_DIVIDER = 1000; // microseconds
 
     static int populateData(List<String> positionals, HashMap<String, Double[]> data) throws IOException {//lettura del file per creare il set di dati da utilizzare
@@ -126,6 +126,7 @@ public class Common {
     }
 
     public static void printList(Iterable<String>[] S) {
+        if (S == null) return;
         for (Iterable<String> strings : S) {
             for (String key : strings) {
                 System.out.print(key + ", ");
@@ -138,6 +139,7 @@ public class Common {
         System.out.println("Executed " + EXECUTIONS_COUNT + " Kmeans, on " + THREAD_COUNT + " threads (if applicable)");
         System.out.println("Cluster number: " + clustersN);
         System.out.println("Total Kmeans execution count: " + EXECUTIONS_COUNT);
+        System.out.println("Completed in " + metrics[4] + " iterations");
         System.out.println("Total execution time in µs : " + metrics[0] / UNIT_DIVIDER + ", average on kmean execution: " + metrics[0] / EXECUTIONS_COUNT / UNIT_DIVIDER);
         System.out.println("Norm execution time in µs : " + metrics[1] / UNIT_DIVIDER + ", average on kmean execution: " + metrics[1] / EXECUTIONS_COUNT / UNIT_DIVIDER);
         System.out.println("Means execution time in µs : " + metrics[2] / UNIT_DIVIDER + ", average on kmean execution: " + metrics[2] / EXECUTIONS_COUNT / UNIT_DIVIDER);
