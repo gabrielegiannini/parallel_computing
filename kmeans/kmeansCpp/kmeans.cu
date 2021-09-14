@@ -62,16 +62,11 @@ normA(const double vect[], const double centroids[], double res[], const size_t 
        blockIdx.x identifica il cluster, ovvero il centroide con cui fare la norma
        threadIdx.x identifica la coordinata di cui si deve occupare il singolo core
     */
-    //printf("Indice res %lu\n",blockIdx.y*n + blockIdx.x*dataSize*n + threadIdx.x);
     // trueIndex = il vettore sul quale deve operare questo thread
-
-    // 2a invocazione -> blockOffset = blockNum*dimensions
     const uint trueIndex = blockOffset + blockIdx.x * vectorsPerThread + threadIdx.x;
-    //printf("Grappa: %lu %i %i %i %i\n", blockIdx.y * n + blockIdx.x * dataSize * n + trueIndex + kmeanIndex * dataSize * n * clusterNumber,blockIdx.x, blockIdx.y,trueIndex,kmeanIndex );
     res[trueIndex * n + blockIdx.y * dataSize * n + threadIdx.y + kmeanIndex * dataSize * n * clusterNumber] = pow(
             vect[trueIndex * n + threadIdx.y] -
             centroids[blockIdx.y * n + threadIdx.y + kmeanIndex * n * clusterNumber], 2);
-    //printf("res ok \n"); 264.672
     __syncthreads();
     //__threadfence();
     if (threadIdx.y == 0)
@@ -137,21 +132,13 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
         filledS[h] = 0;
     }
 
-    //norm(data, means);
     int totalThreads = clusterNumber * dataSize * n;
-    // dim3 numBlocks(clusterNumber, dataSize);
 
     const int dimensions = __double2int_rd(1024.0 / n);
-    // blocknum*n*clusternumber*dimensions ~~ totalThreads
+    // blocknum*n*clusternumber*dimensions ~ totalThreads
     int blockNum = (totalThreads / (dimensions*n)) / clusterNumber;
-    //printf("Sto per fare norm\n");
     dim3 blockDimensions(dimensions, n);
     dim3 gridDimension(blockNum, clusterNumber);
-//    while (totalThreads > dimensions) {
-//        totalThreads-=dimensions;
-//        normA<<<1, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber, totalThreads);
-//        cudaDeviceSynchronize();
-//    }
     if (blockNum > 0)
     {
         normA<<<gridDimension, blockDimensions>>>(data, centroids, res, n, sum, dataSize, threadIdx.x, clusterNumber,
@@ -188,9 +175,6 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
             targetPosition += dimS[i + threadIdx.x * clusterNumber];
         }
         targetPosition += filledS[posMin[l]];
-//        for (int k=0;k<n;k++){
-//            S[targetPosition*n+k] = data[l*n+k];
-//        }
         S[targetPosition + threadIdx.x * dataSize] = l;
         filledS[posMin[l]] += 1;
         totalNormAvg[posMin[l] + threadIdx.x * clusterNumber] =
@@ -278,7 +262,6 @@ unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &lab
 
 string formatClusters(vector<string> &labels, int clusters[], const int dimS[], size_t clusterNumber, size_t dataSize)
 {
-    //string table = "Cluster:\n\n";
     ostringstream table;
     int width = min(max(int(labels[0].length() * 5 / 2), 6), 20);
     table << "Clusters:\n\n";
@@ -320,8 +303,6 @@ void initClusters(int cluster_number, unsigned long n, const double *data, doubl
     for (int i = 0; i < cluster_number; i++)
     {
         size_t randomDataPos = rand() % (element_count - 1);
-//        cout << "random num: ";
-//        cout << "Posizione " << i << "-esima: " << randomDataPos << endl;
         for (int j = 0; j < n; j++)
         {
             centroidInit[(i * n + j) + kmeanIndex * cluster_number * n] = data[randomDataPos * n + j];
@@ -331,6 +312,7 @@ void initClusters(int cluster_number, unsigned long n, const double *data, doubl
 
 int main(int argc, char *argv[])
 {
+    auto t1 = chrono::high_resolution_clock::now();
     double *res;
     double *sum;
     int *S;
@@ -385,13 +367,6 @@ int main(int argc, char *argv[])
     double centroidInit[cluster_number * n * numberOfConcurrentKmeans];
     std::copy(dataVec.begin(), dataVec.end(), data);
     size_t element_count = dataLabel.size();
-    for (string elem: dataLabel)
-    {
-        cout << elem << endl;
-    }
-    cout << "Data element number: " << element_count << "\n";
-    cout << "Clusters number: " << cluster_number << "\n";
-    cout << "Element dimensions (n) = " << n << endl;
 
     // Allocate host memory
     S_host = new int[element_count * numberOfConcurrentKmeans];
@@ -426,24 +401,23 @@ int main(int argc, char *argv[])
                        cudaMemcpyHostToDevice)); //i vettori inizializzati nel for prima
 
     // Executing kernel
-    // cudaEvent_t start, stop;
-    // cudaEventCreate(&start);
-    // cudaEventCreate(&stop);
+     cudaEvent_t start, stop;
+     cudaEventCreate(&start);
+     cudaEventCreate(&stop);
 
     size_t iterazioni = 0;
     double minAvgNorm = DBL_MAX;
     float milliseconds = 0;
     while (totalRuns > 0)
     {
-        // cudaEventRecord(start);
+        cudaEventRecord(start);
         kmeanDevice<<<1, numberOfConcurrentKmeans>>>(S, dimS, n, totalNormAvg, data_d, centroids, res, sum,
                                                      element_count, cluster_number);
-        // cudaEventRecord(stop);
-        // cudaEventSynchronize(stop);
-        // float millisecondsTmp;
-        // cudaEventElapsedTime(&millisecondsTmp, start, stop);
-        //milliseconds = milliseconds + millisecondsTmp;
-        //cout << "The elapsed time in gpu was: " << milliseconds << "ms." << endl;
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        float millisecondsTmp;
+        cudaEventElapsedTime(&millisecondsTmp, start, stop);
+        milliseconds = milliseconds + millisecondsTmp;
 
         CUDA_CHECK_RETURN(cudaDeviceSynchronize());
         CUDA_CHECK_RETURN(
@@ -465,8 +439,6 @@ int main(int argc, char *argv[])
             if(converged)
             {
                 totalRuns--;
-//                    CUDA_CHECK_RETURN(cudaMemcpy(totalNormAvg_host, totalNormAvg + k * cluster_number,
-//                                                 sizeof(double) * cluster_number, cudaMemcpyDeviceToHost));
                 double totNorm = 0;
                 for (int h = 0; h < cluster_number; h++)
                 {
@@ -496,16 +468,10 @@ int main(int argc, char *argv[])
         iterazioni++;
     }
 
-    cout << "Dimensione grid: " << cluster_number << "x" << element_count << endl;
-    cout << "Dimensioni dei cluster\n";
-    int sommaDim = 0;
-    for (int i = 0; i < cluster_number; i++)
-    {
-        cout << dimS_host[i] << endl;
-        sommaDim+=dimS_host[i];
-    }
-    cout << "Totale dimS: " << sommaDim << "\n";
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 
+    auto t2 = chrono::high_resolution_clock::now();
 
     string output = formatClusters(dataLabel, bestS, dimS_host, cluster_number, element_count);
     // write output on a file
@@ -517,6 +483,15 @@ int main(int argc, char *argv[])
     {
         cout << output;
     }
+
+    cout << "Data element number: " << element_count << "\n";
+    cout << "Clusters number: " << cluster_number << "\n";
+    cout << "Element dimensions (n) = " << n << endl;
+    cout << "Dimensione grid: " << cluster_number << "x" << element_count << endl;
+    auto elapsed = chrono::duration_cast<chrono::microseconds>(t2 - t1).count();
+    cout << "Total execution time: " << elapsed << " µs (" << elapsed / 1000000 << " s)." << endl;
+
+    cout << "The elapsed time in gpu was: " << milliseconds << " ms." << endl;
 
     // Deallocate device memory
     cudaFree(res);
@@ -536,9 +511,7 @@ int main(int argc, char *argv[])
 
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
     cout << "" << endl;
-    cout << "Tempo di esecuzione funzioni kernel: " << milliseconds / 1000 << "s" << endl;
-    cout << "   -tempo di esecuzione funzione normA: " << iterazioni << " iterazioni." << endl;
-    cout << "   -tempo di esecuzione funzione meanz: " << iterazioni << " iterazioni." << endl;
+    cout << "Tempo di esecuzione funzioni kernel: " << milliseconds << "ms" << endl;
     cout << "" << endl;
 }
 
