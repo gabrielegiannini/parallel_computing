@@ -442,7 +442,7 @@ int main(int argc, char *argv[])
                 double totNorm = 0;
                 for (int h = 0; h < cluster_number; h++)
                 {
-                    totNorm += totalNormAvg_host[k * numberOfConcurrentKmeans + h];
+                    totNorm += totalNormAvg_host[k * cluster_number + h];
                 }
                 if (totNorm < minAvgNorm)
                 {
