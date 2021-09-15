@@ -35,7 +35,8 @@ void normA(double **vect, double **centroids, double ***res, double **sum, const
     for(int j=0 ; j<clusterNumber ; j++){
         for(int i=0 ; i<dataSize ; i++){
             for(int k=0; k<n; k++){
-                res[i][j][k] = pow(vect[i][k] - centroids[j][k], 2); //non sono molto sicuro di questa riga
+                double diff = vect[i][k] - centroids[j][k];
+                res[i][j][k] = diff*diff; //non sono molto sicuro di questa riga
             }
         }
     }

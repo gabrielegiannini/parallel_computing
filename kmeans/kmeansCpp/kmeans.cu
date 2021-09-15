@@ -64,9 +64,9 @@ normA(const double vect[], const double centroids[], double res[], const size_t 
     */
     // trueIndex = il vettore sul quale deve operare questo thread
     const uint trueIndex = blockOffset + blockIdx.x * vectorsPerThread + threadIdx.x;
-    res[trueIndex * n + blockIdx.y * dataSize * n + threadIdx.y + kmeanIndex * dataSize * n * clusterNumber] = pow(
-            vect[trueIndex * n + threadIdx.y] -
-            centroids[blockIdx.y * n + threadIdx.y + kmeanIndex * n * clusterNumber], 2);
+    double diff = vect[trueIndex * n + threadIdx.y] -
+            centroids[blockIdx.y * n + threadIdx.y + kmeanIndex * n * clusterNumber];
+    res[trueIndex * n + blockIdx.y * dataSize * n + threadIdx.y + kmeanIndex * dataSize * n * clusterNumber] = diff*diff;
     __syncthreads();
     //__threadfence();
     if (threadIdx.y == 0)
