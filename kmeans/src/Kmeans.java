@@ -9,12 +9,12 @@ import java.util.Map.Entry;
 public class Kmeans {
 
     private final int clustersNumber;
-    private Map<String, Double[]> data;
-    private double[][] means;
+    private final Map<String, Double[]> data;
+    private final double[][] means;
     private List<String>[] S;
     private List<String>[] F;
-    private double[] totalNormAvg;
-    private int n;
+    private final double[] totalNormAvg;
+    private final int n;
 
     public double[] getTotalNormAvg() {
         return totalNormAvg;
