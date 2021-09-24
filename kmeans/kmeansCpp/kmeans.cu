@@ -181,7 +181,8 @@ meanz(double centroids[], const double data[], const int S[], const int dimS[], 
     }
     // divide per la dimensione del cluster per fare la media -> coordinata n-esima del nuovo centroide di questo cluster
     centroids[blockIdx.x * n + threadIdx.x + kmeanIndex * n * clusterNumber] = tmpMean /
-            dimS[blockIdx.x + kmeanIndex * clusterNumber];
+                                                                               dimS[blockIdx.x +
+                                                                                    kmeanIndex * clusterNumber];
 }
 
 void
@@ -239,9 +240,10 @@ kmeanDevice(int S_gobal[], int dimS[], size_t n, double totalNormAvg[], const do
     auto *min = new double[dataSize]; //inizializzare a DBL_MAX
     int *filledS = new int[clusterNumber];
     int threadidx = 0;
+    uint iter = 0;
     while (!quit)
     {
-
+        iter++;
         for (int h = 0; h < dataSize; h++)
         {// array delle norme. no cuda
             min[h] = DBL_MAX;
@@ -369,7 +371,7 @@ kmeanDevice(int S_gobal[], int dimS[], size_t n, double totalNormAvg[], const do
         }
         if (converged)
         {
-            convergedK[k] = true;
+            *convergedK = true;
             quit = true;
         }
 //        if (threadidx == 0)
@@ -449,41 +451,55 @@ unsigned long parseData(ifstream &csv, vector<double> &data, vector<string> &lab
     return n;
 }
 
-string formatClusters(vector<string> &labels, int clusters[], const int dimS[], size_t clusterNumber, size_t dataSize)
+void formatClusters(vector<string> &labels, int clusters[], const int dimS[], size_t clusterNumber, size_t dataSize,
+                    bool print, const string &output_file)
 {
-    ostringstream table;
     int width = min(max(int(labels[0].length() * 5 / 2), 6), 20);
-    table << "Clusters:\n\n";
-    int processedCluster[clusterNumber];
+//    table << "Clusters:\n\n";
+    ofstream out_file;
+    out_file.open(output_file);
+    int *processedCluster = new int[clusterNumber];
     for (size_t col = 0; col < clusterNumber; col++)
     {
-        table << setw(width) << col;
+//        table << setw(width) << col;
         processedCluster[col] = 0;
     }
-    table << setw(width / 2) << endl;
-    for (int i = 0; i < clusterNumber * width; i++)
-    {
-        table << "·";
-    }
-    table << endl;
+//    table << setw(width / 2) << endl;
+//    for (int i = 0; i < clusterNumber * width; i++)
+//    {
+//        table << "·";
+//    }
+//    table << endl;
     size_t processed = 0;
+    const size_t chunk = 1000;
     while (processed < dataSize)
     {
-        for (size_t col = 0; col < clusterNumber; col++)
+        size_t start = processed;
+        ostringstream table;
+        while (processed < start + chunk && processed < dataSize)
         {
-            if (dimS[col] > processedCluster[col])
+            for (size_t col = 0; col < clusterNumber; col++)
             {
-                table << setw(width) << labels[clusters[processed]];
-                processedCluster[col] += 1;
-                processed++;
-            } else
-            {
-                table << setw(width) << " ";
+                if (dimS[col] > processedCluster[col])
+                {
+                    table << setw(width) << labels[clusters[processed]];
+                    processedCluster[col] += 1;
+                    processed++;
+                } else
+                {
+                    table << setw(width) << " ";
+                }
             }
+            table << endl;
         }
-        table << endl;
+        out_file << table.str();
+        if (print)
+        {
+            cout << table.str();
+        }
     }
-    return table.str();
+    delete[] processedCluster;
+    out_file.close();
 }
 
 void initClusters(int cluster_number, unsigned long n, const double *data, double *centroidInit, size_t element_count,
@@ -518,14 +534,12 @@ int main(int argc, char *argv[])
     double *totalNormAvg;
     double *centroids;
     double *data_d;
-    bool *convergedK_d;
-    bool *convergedK;
 
     int cluster_number = DEFAULT_CLUSTER_NUMBER;
     string target_file = "../../test_reale.csv";
     string output_file = "output.txt";
     bool print = false;
-    int numberOfConcurrentKmeans = 5;
+//    int numberOfConcurrentKmeans = 5;
     int totalRuns = 100;
 
     for (int i = 1; i < argc; i++)
@@ -542,9 +556,9 @@ int main(int argc, char *argv[])
         } else if (!strcmp("-p", argv[i]) || !strcmp("--print", argv[i]))
         {
             print = true;
-        } else if (!strcmp("-pk", argv[i]) || !strcmp("--parallel-kmeans", argv[i]))
-        {
-            numberOfConcurrentKmeans = stoi(argv[++i]);
+//        } else if (!strcmp("-pk", argv[i]) || !strcmp("--parallel-kmeans", argv[i]))
+//        {
+//            numberOfConcurrentKmeans = stoi(argv[++i]);
         } else if (!strcmp("-tr", argv[i]) || !strcmp("--total-runs", argv[i]))
         {
             totalRuns = stoi(argv[++i]);
@@ -560,34 +574,33 @@ int main(int argc, char *argv[])
     myfile.open(target_file);
     unsigned long n = parseData(myfile, dataVec, dataLabel);
     myfile.close();
-    double data[dataVec.size()];
-//    double centroidInit[cluster_number * n * numberOfConcurrentKmeans];
-    double *centroidInit;
-    CUDA_CHECK_RETURN(cudaMallocHost((double **) &centroidInit, sizeof(double)*cluster_number * n * numberOfConcurrentKmeans));
+    auto data = new double[dataVec.size()];
+    double centroidInit[cluster_number * n];
+//    double *centroidInit;
+//    CUDA_CHECK_RETURN(cudaMallocHost((double **) &centroidInit, sizeof(double)*cluster_number * n * numberOfConcurrentKmeans));
     std::copy(dataVec.begin(), dataVec.end(), data);
     size_t element_count = dataLabel.size();
 
     // Allocate host memory
-    S_host = new int[element_count * numberOfConcurrentKmeans];
-    S_old_h = new int[element_count * numberOfConcurrentKmeans];
+    S_host = new int[element_count];
+    S_old_h = new int[element_count];
     int *bestS = new int[element_count];
     dimS_host = new int[cluster_number];
-    double *totalNormAvg_host = new double[cluster_number * numberOfConcurrentKmeans];
-    convergedK = new bool[numberOfConcurrentKmeans];
-//    double *sum_h = new double[element_count * cluster_number];
-    double *sum_h;
-    CUDA_CHECK_RETURN(cudaMallocHost((double **) &sum_h, sizeof(double)*element_count * cluster_number));
+    double *totalNormAvg_host = new double[cluster_number];
+    double *sum_h = new double[element_count * cluster_number];
+//    double *sum_h;
+//    CUDA_CHECK_RETURN(cudaMallocHost((double **) &sum_h, sizeof(double)*element_count * cluster_number));
 
     // Allocate device memory
     CUDA_CHECK_RETURN(
-            cudaMalloc((void **) &res, sizeof(double) * dataVec.size() * cluster_number * numberOfConcurrentKmeans));
+            cudaMalloc((void **) &res, sizeof(double) * dataVec.size() * cluster_number));
     CUDA_CHECK_RETURN(
-            cudaMalloc((void **) &sum, sizeof(double) * element_count * cluster_number * numberOfConcurrentKmeans));
-    CUDA_CHECK_RETURN(cudaMalloc((void **) &S, sizeof(int) * element_count * numberOfConcurrentKmeans));
+            cudaMalloc((void **) &sum, sizeof(double) * element_count * cluster_number));
+    CUDA_CHECK_RETURN(cudaMalloc((void **) &S, sizeof(int) * element_count));
 //    CUDA_CHECK_RETURN(cudaMalloc((void **) &S_old, sizeof(int) * element_count * numberOfConcurrentKmeans));
-    CUDA_CHECK_RETURN(cudaMalloc((void **) &dimS, sizeof(int) * cluster_number * numberOfConcurrentKmeans));
+    CUDA_CHECK_RETURN(cudaMalloc((void **) &dimS, sizeof(int) * cluster_number));
 //    CUDA_CHECK_RETURN(cudaMalloc((void **) &totalNormAvg, sizeof(double) * cluster_number * numberOfConcurrentKmeans));
-    CUDA_CHECK_RETURN(cudaMalloc((void **) &centroids, sizeof(double) * cluster_number * n * numberOfConcurrentKmeans));
+    CUDA_CHECK_RETURN(cudaMalloc((void **) &centroids, sizeof(double) * cluster_number * n));
     CUDA_CHECK_RETURN(cudaMalloc((void **) &data_d, sizeof(double) * dataVec.size()));
 //    CUDA_CHECK_RETURN(cudaMalloc((void **) &convergedK_d, sizeof(bool) * numberOfConcurrentKmeans));
 
@@ -596,13 +609,10 @@ int main(int argc, char *argv[])
 
     //init cluster picking random arrays from data
     srand(time(nullptr));
-    for (int k = 0; k < numberOfConcurrentKmeans; k++)
-    {
-        initClusters(cluster_number, n, data, centroidInit, element_count, k);
-    }
+    initClusters(cluster_number, n, data, centroidInit, element_count, 0);
 
     CUDA_CHECK_RETURN(
-            cudaMemcpy(centroids, centroidInit, sizeof(double) * n * cluster_number * numberOfConcurrentKmeans,
+            cudaMemcpy(centroids, centroidInit, sizeof(double) * n * cluster_number,
                        cudaMemcpyHostToDevice)); //i vettori inizializzati nel for prima
 
     // Executing kernel
@@ -615,15 +625,12 @@ int main(int argc, char *argv[])
     float milliseconds = 0;
     while (totalRuns > 0)
     {
-        for (int k = 0; k < numberOfConcurrentKmeans; k++)
-        {
-            convergedK[k] = false;
-        }
+        bool converged = false;
 //        CUDA_CHECK_RETURN(
 //                cudaMemcpy(convergedK_d, convergedK, sizeof(bool) * numberOfConcurrentKmeans, cudaMemcpyHostToDevice));
 //        cudaEventRecord(start);
         kmeanDevice(S_host, dimS_host, n, totalNormAvg_host, data_d, centroidInit, res, sum_h,
-                    element_count, cluster_number, S_old_h, convergedK,
+                    element_count, cluster_number, S_old_h, &converged,
                     centroids, sum, dimS, S, data);
 //        cudaEventRecord(stop);
 //        cudaEventSynchronize(stop);
@@ -639,31 +646,28 @@ int main(int argc, char *argv[])
 //                                     cudaMemcpyDeviceToHost));
 //        CUDA_CHECK_RETURN(
 //                cudaMemcpy(convergedK, convergedK_d, sizeof(bool) * numberOfConcurrentKmeans, cudaMemcpyDeviceToHost));
-        for (int k = 0; k < numberOfConcurrentKmeans; k++)
+        if (converged)
         {
-            if (convergedK[k])
+            totalRuns--;
+            double totNorm = 0;
+            for (int h = 0; h < cluster_number; h++)
             {
-                totalRuns--;
-                double totNorm = 0;
-                for (int h = 0; h < cluster_number; h++)
-                {
-                    totNorm += totalNormAvg_host[k * cluster_number + h];
-                }
-                if (totNorm < minAvgNorm)
-                {
-                    minAvgNorm = totNorm;
-                    memcpy(bestS, S_host + k * element_count, sizeof(int) * element_count);
-                    CUDA_CHECK_RETURN(cudaMemcpy(dimS_host, dimS + k * cluster_number, sizeof(int) * cluster_number,
-                                                 cudaMemcpyDeviceToHost));
-                }
-                if (totalRuns > 0)
-                {
-                    initClusters(cluster_number, n, data, centroidInit, element_count, k);
-                    CUDA_CHECK_RETURN(
-                            cudaMemcpy(centroids + k * cluster_number * n, centroidInit + k * cluster_number * n,
-                                       sizeof(double) * cluster_number * n, cudaMemcpyHostToDevice));
+                totNorm += totalNormAvg_host[h];
+            }
+            if (totNorm < minAvgNorm)
+            {
+                minAvgNorm = totNorm;
+                memcpy(bestS, S_host, sizeof(int) * element_count);
+                CUDA_CHECK_RETURN(cudaMemcpy(dimS_host, dimS, sizeof(int) * cluster_number,
+                                             cudaMemcpyDeviceToHost));
+            }
+            if (totalRuns > 0)
+            {
+                initClusters(cluster_number, n, data, centroidInit, element_count, 0);
+                CUDA_CHECK_RETURN(
+                        cudaMemcpy(centroids, centroidInit,
+                                   sizeof(double) * cluster_number * n, cudaMemcpyHostToDevice));
 
-                }
             }
         }
 
@@ -674,17 +678,18 @@ int main(int argc, char *argv[])
 //    cudaEventDestroy(stop);
 
 //    auto t2 = chrono::high_resolution_clock::now();
-
-    string output = formatClusters(dataLabel, bestS, dimS_host, cluster_number, element_count);
+//    cout << "sto per formattare" << endl;
+    formatClusters(dataLabel, bestS, dimS_host, cluster_number, element_count, print, output_file);
+//    cout << "ho finito" << endl;
     // write output on a file
 //    ofstream out_file;
 //    out_file.open(output_file);
 //    out_file << output << endl;
 //    out_file.close();
-    if (print)
-    {
-        cout << output;
-    }
+//    if (print)
+//    {
+//        cout << output;
+//    }
 
     cout << "Data element number: " << element_count << "\n";
     cout << "Clusters number: " << cluster_number << "\n";
@@ -704,14 +709,14 @@ int main(int argc, char *argv[])
     cudaFree(totalNormAvg);
     cudaFree(centroids);
     cudaFree(data_d);
-    cudaFree(convergedK_d);
+//    cudaFree(convergedK_d);
 
     // Deallocate host memory
     delete[] S_host;
     delete[] dimS_host;
     delete[] bestS;
     delete[] totalNormAvg_host;
-    delete[] convergedK;
+//    delete[] convergedK;
 
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
     cout << "" << endl;
