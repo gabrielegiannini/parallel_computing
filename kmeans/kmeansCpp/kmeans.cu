@@ -137,9 +137,10 @@ normA2(const double vect[], const double centroids[], double res[], const size_t
        allora, res contiene i risultati intermedi del calcolo della norma, ovvero i quadrati delle differenze fra coordinate corrispondenti dei vettori
        quindi e' grande #vettori*#cluster*#coordinate(cioe' dimensione dei singoli vettori, cioe' n)
 
-       blockIdx.y identifica il vettore di cui calcolare la norma
-       blockIdx.x identifica il cluster, ovvero il centroide con cui fare la norma
-       threadIdx.x identifica la coordinata di cui si deve occupare il singolo core
+       threadIdx.x identifica il vettore di cui calcolare la norma
+       threadIdx.y identifica il cluster, ovvero il centroide con cui fare la norma
+       blockIdx.x identifica quale chunk di vettori si sta calcolando (ogni chunk è fatta in modo da avere
+                    clusterNumber * vectorsPerThread ~ 1024 per riempire il blocco il più possibile
     */
     // trueIndex = il vettore sul quale deve operare questo thread
     const uint trueIndex = blockOffset + blockIdx.x * vectorsPerThread + threadIdx.x;
@@ -148,10 +149,41 @@ normA2(const double vect[], const double centroids[], double res[], const size_t
     for (int i = 0; i < n; i++)
     {
         double diff = vect[trueIndex * n + i] -
-                      centroids[blockIdx.y * n + i + kmeanIndex * n * clusterNumber];
+                      centroids[threadIdx.y * n + i + kmeanIndex * n * clusterNumber];
         tmpSum = tmpSum + diff * diff;
     }
-    sum[blockIdx.y * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] = tmpSum;
+    sum[threadIdx.y * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] = tmpSum;
+}
+
+__global__ void clustering(double centroids[], const double data[], ulong n, const int kmeanIndex,
+                           const ulong clusterNumber, const ulong dataSize, const double sum[],
+                           int positions[], const ulong remainder)
+{
+    /*
+     * blockIdx.x   è il numero di blocco, ognuno da 1024 vettori
+     * threadIdx.x  è il vettore all'interno del blocco
+     * remainder    è un eventuale offset per individuare il vettore
+     */
+    uint v = threadIdx.x + remainder + blockIdx.x * 1024;
+    int posMin = 0;
+    auto min = DBL_MAX;
+    for (int h = 0; h < clusterNumber; h++)
+    {
+        if (sum[h * dataSize + kmeanIndex * clusterNumber * dataSize + v] < min)
+        {
+            min = sum[h * dataSize + kmeanIndex * clusterNumber * dataSize + v];
+            posMin = h;
+        }
+    }
+    //segna che il vettore v appartiene al cluster posMin
+    positions[v] = posMin;
+
+    //ora sappiamo a che cluster appartiene il vettore, aggiungiamolo alla somma per il calcolo del nuovo centroide di quel cluster
+    for (int i = 0; i < n; i++)
+    {
+        atomicAdd(centroids + posMin * n + i, data[v * n + i]);
+//        centroids[posMin * n + i] += data[v * n + i];
+    }
 }
 
 __global__ void
@@ -222,33 +254,30 @@ meanz2(double centroids[], const double data[], const int S[], const int dimS[],
 
 // dataSize è il numero di vettori, ovvero sizeof(data) / n (sennò aveva davvero poco senso)
 void
-kmeanDevice(int S_gobal[], int dimS[], size_t n, double totalNormAvg[], const double data[], double centroids[],
+kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double data[], double centroids[],
             double res[],
-            double sum[], size_t dataSize, uint clusterNumber, int S_old_global[], bool *convergedK,
-            double *centroids_d, double *sum_d, int *dimS_d, int *S_d, const double data_h[])
+            double sum[], size_t dataSize, uint clusterNumber, bool *convergedK,
+            double *centroids_d, double *sum_d,
+            int positions_g[], int positions_old_g[], int positions_d[])
 {
-//    __shared__ bool quit;
-//    __shared__ int *S;
-//    __shared__ int *S_old;
     bool quit;
-    int *S;
-    int *S_old;
     quit = false;
-    S = S_gobal;
-    S_old = S_old_global;
-    int *posMin = new int[dataSize];
-    auto *min = new double[dataSize]; //inizializzare a DBL_MAX
+    int *positions = positions_g;
+    int *positions_old = positions_old_g;
+//    int *posMin = new int[dataSize];
+//    auto *min = new double[dataSize]; //inizializzare a DBL_MAX
     int *filledS = new int[clusterNumber];
     int threadidx = 0;
     uint iter = 0;
     while (!quit)
     {
         iter++;
-        for (int h = 0; h < dataSize; h++)
-        {// array delle norme. no cuda
-            min[h] = DBL_MAX;
-            posMin[h] = 0;
-        }
+//        cout << "Nuovo giro " << iter << endl;
+//        for (int h = 0; h < dataSize; h++)
+//        {// array delle norme. no cuda
+//            min[h] = DBL_MAX;
+//            posMin[h] = 0;
+//        }
 
         for (int h = 0; h < clusterNumber; h++)
         {// array delle norme. no cuda
@@ -257,90 +286,115 @@ kmeanDevice(int S_gobal[], int dimS[], size_t n, double totalNormAvg[], const do
             filledS[h] = 0;
         }
 
-        int totalThreads = clusterNumber * dataSize * n;
-
-//        const int dimensions = __double2int_rd(1024.0 / n);
-        const uint dimensions = (uint) (1024.0l / n);
-        // blocknum*n*clusternumber*dimensions ~ totalThreads
+        const uint dimensions = (uint) (1024.0l / clusterNumber);
 
         CUDA_CHECK_RETURN(
                 cudaMemcpy(centroids_d, centroids, sizeof(double) * n * clusterNumber,
                            cudaMemcpyHostToDevice));
 
-        ulong blockNum = (totalThreads / (dimensions * n)) / clusterNumber;
-        dim3 blockDimensions(dimensions, n);
-        dim3 gridDimension(blockNum, clusterNumber);
+        ulong blockNum = (dataSize / (dimensions));
+        dim3 blockDimensions(dimensions, clusterNumber);
         if (blockNum > 0)
         {
-//            normA<<<gridDimension, blockDimensions>>>(
-//                    data, centroids_d, res, n, sum_d, dataSize, 0, clusterNumber, dimensions, 0);
-            normA1<<<gridDimension, blockDimensions, sizeof(double) * dimensions * n>>>(
-                    data, centroids_d, res, n, sum_d, dataSize, 0, clusterNumber, dimensions, 0);
-//            normA2<<<gridDimension, dimensions>>>(data, centroids_d, res, n, sum_d, dataSize, 0, clusterNumber,
-//                                                  dimensions, 0);
+            normA2<<<blockNum, blockDimensions>>>(data, centroids_d, res, n, sum_d, dataSize, 0, clusterNumber,
+                                                  dimensions, 0);
         }
-//        cudaDeviceSynchronize();
-
-//        cout << "\n######## TERMINATA \n" << endl;
 
         ulong lastVectors = dataSize - blockNum * dimensions;
         if (lastVectors > 0)
         {
-            dim3 lastBlockDim(lastVectors, n);
-            dim3 lastGridDim(1, clusterNumber);
+            dim3 lastBlockDim(lastVectors, clusterNumber);
+//            dim3 lastGridDim(1, clusterNumber);
 //            normA<<<lastGridDim, lastBlockDim>>>(data, centroids_d, res, n, sum_d,
 //                                                                                   dataSize, 0, clusterNumber,
 //                                                                                   lastVectors,
 //                                                                                   blockNum * (dimensions));
-            normA1<<<lastGridDim, lastBlockDim, sizeof(double) * lastVectors * n>>>(data, centroids_d, res, n, sum_d,
-                                                                                    dataSize, 0, clusterNumber,
-                                                                                    lastVectors,
-                                                                                    blockNum * (dimensions));
-//            normA2<<<lastGridDim, lastVectors>>>(data, centroids_d, res, n, sum_d,
-//                                                 dataSize,
-//                                                 0, clusterNumber,
-//                                                 lastVectors,
-//                                                 blockNum * (dimensions));
+//            normA1<<<lastGridDim, lastBlockDim, sizeof(double) * lastVectors * n>>>(data, centroids_d, res, n, sum_d,
+//                                                                                    dataSize, 0, clusterNumber,
+//                                                                                    lastVectors,
+//                                                                                    blockNum * (dimensions));
+            normA2<<<1, lastBlockDim>>>(data, centroids_d, res, n, sum_d,
+                                        dataSize,
+                                        0, clusterNumber,
+                                        lastVectors,
+                                        blockNum * (dimensions));
         }
         cudaDeviceSynchronize();
+//        CUDA_CHECK_RETURN(
+//                cudaMemcpy(sum, sum_d, sizeof(double) * dataSize * clusterNumber,
+//                           cudaMemcpyDeviceToHost));
+//        for (int v = 0; v < dataSize; v++)
+//        {
+//            for (int h = 0; h < clusterNumber; h++)
+//            {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
+//                if (sum[h * dataSize + threadidx * clusterNumber * dataSize + v] < min[v])
+//                {
+//                    min[v] = sum[h * dataSize + threadidx * clusterNumber * dataSize + v];
+//                    posMin[v] = h;
+//                }
+//            }
+//            dimS[posMin[v] + threadidx * clusterNumber] += 1;
+//        }
+
+        fill_n(centroids, clusterNumber, 0.0);
         CUDA_CHECK_RETURN(
-                cudaMemcpy(sum, sum_d, sizeof(double) * dataSize * clusterNumber,
+                cudaMemcpy(centroids_d, centroids, sizeof(double) * n * clusterNumber,
+                           cudaMemcpyHostToDevice));
+        blockNum = dataSize / 1024;
+        if (blockNum > 0)
+        {
+            clustering<<<blockNum, 1024>>>(centroids_d, data, n, 0, clusterNumber, dataSize, sum_d, positions_d, 0);
+        }
+
+        lastVectors = dataSize - blockNum * 1024;
+        if (lastVectors > 0)
+        {
+            clustering<<<1, lastVectors>>>(centroids_d, data, n, 0, clusterNumber, dataSize, sum_d, positions_d,
+                                           blockNum * 1024);
+        }
+
+        cudaDeviceSynchronize();
+        CUDA_CHECK_RETURN(cudaMemcpy(positions, positions_d, sizeof(int) * dataSize, cudaMemcpyDeviceToHost));
+        CUDA_CHECK_RETURN(
+                cudaMemcpy(centroids, centroids_d, sizeof(double) * n * clusterNumber,
                            cudaMemcpyDeviceToHost));
+        fill(dimS, dimS + clusterNumber, 0);
+//        cout << "[";
         for (int v = 0; v < dataSize; v++)
         {
-            for (int h = 0; h < clusterNumber; h++)
-            {//direi che questo for non importa parallelizzarlo con cuda visto che sono solo assegnazioni apparte norm che pero` e` gia` fatto
-                if (sum[h * dataSize + threadidx * clusterNumber * dataSize + v] < min[v])
-                {
-                    min[v] = sum[h * dataSize + threadidx * clusterNumber * dataSize + v];
-                    posMin[v] = h;
-                }
-            }
-            dimS[posMin[v] + threadidx * clusterNumber] += 1;
+//            cout << positions[v] << " ";
+            dimS[positions[v]] += 1;
         }
-
-        for (int l = 0; l < dataSize; l++)
+//        cout << "]" << endl;
+        for (int h = 0; h < clusterNumber; h++)
         {
-            int targetPosition = 0;
-            for (int i = 0; i < posMin[l]; i++)
+            for (int d = 0; d < n; d++)
             {
-                targetPosition += dimS[i + threadidx * clusterNumber];
+                centroids[h * n + d] = centroids[h * n + d] / dimS[h];
             }
-            targetPosition += filledS[posMin[l]];
-            S[targetPosition + threadidx * dataSize] = l;
-            filledS[posMin[l]] += 1;
-            totalNormAvg[posMin[l] + threadidx * clusterNumber] =
-                    totalNormAvg[posMin[l] + threadidx * clusterNumber] + min[l];
         }
+//        for (int l = 0; l < dataSize; l++)
+//        {
+//            int targetPosition = 0;
+//            for (int i = 0; i < posMin[l]; i++)
+//            {
+//                targetPosition += dimS[i + threadidx * clusterNumber];
+//            }
+//            targetPosition += filledS[posMin[l]];
+//            S[targetPosition + threadidx * dataSize] = l;
+//            filledS[posMin[l]] += 1;
+//            totalNormAvg[posMin[l] + threadidx * clusterNumber] =
+//                    totalNormAvg[posMin[l] + threadidx * clusterNumber] + min[l];
+//        }
 
-        for (int i = 0; i < clusterNumber; i++)
-        {
-            if (dimS[i + threadidx * clusterNumber] > 0)
-            {
-                totalNormAvg[i + threadidx * clusterNumber] =
-                        totalNormAvg[i + threadidx * clusterNumber] / dimS[i + threadidx * clusterNumber];
-            }
-        }
+//        for (int i = 0; i < clusterNumber; i++)
+//        {
+//            if (dimS[i + threadidx * clusterNumber] > 0)
+//            {
+//                totalNormAvg[i + threadidx * clusterNumber] =
+//                        totalNormAvg[i + threadidx * clusterNumber] / dimS[i + threadidx * clusterNumber];
+//            }
+//        }
 
 //        CUDA_CHECK_RETURN(
 //                cudaMemcpy(dimS_d, dimS, sizeof(int) * clusterNumber,
@@ -348,12 +402,14 @@ kmeanDevice(int S_gobal[], int dimS[], size_t n, double totalNormAvg[], const do
 //        CUDA_CHECK_RETURN(
 //                cudaMemcpy(S_d, S, sizeof(int) * dataSize, cudaMemcpyHostToDevice));
 //        meanz<<<clusterNumber, n>>>(centroids_d, data, S_d, dimS_d, n, threadidx, clusterNumber, dataSize);
-        meanz2(centroids, data_h, S, dimS, n, threadidx, clusterNumber, dataSize);
+//        meanz2(centroids, data_h, S, dimS, n, threadidx, clusterNumber, dataSize);
 //        cudaDeviceSynchronize();
 
 //        CUDA_CHECK_RETURN(
 //                cudaMemcpy(centroids, centroids_d, sizeof(double) * n * clusterNumber,
 //                           cudaMemcpyDeviceToHost));
+
+
 
         bool converged = true;
         uint k = threadidx;
@@ -362,7 +418,8 @@ kmeanDevice(int S_gobal[], int dimS[], size_t n, double totalNormAvg[], const do
 //            if(i==0){
 //                printf("Primo elemento S(%p) e S_old(%p): [%i] - [%i]\n", S, S_old, S[i + k*dataSize], S_old[i+k*dataSize]);
 //            }
-            if (S[i + k * dataSize] != S_old[i + k * dataSize])
+//            if (S[i + k * dataSize] != S_old[i + k * dataSize])
+            if (positions[i + k * dataSize] != positions_old[i + k * dataSize])
             {
 //                printf("Primo elemento diverso S(%p) e S_old(%p): [%i] - [%i]\n", S, S_old, S[i + k*dataSize], S_old[i+k*dataSize]);
                 converged = false;
@@ -373,19 +430,43 @@ kmeanDevice(int S_gobal[], int dimS[], size_t n, double totalNormAvg[], const do
         {
             *convergedK = true;
             quit = true;
+
+            fill(filledS, filledS + clusterNumber, 0);
+            CUDA_CHECK_RETURN(
+                    cudaMemcpy(sum, sum_d, sizeof(double) * dataSize * clusterNumber, cudaMemcpyDeviceToHost));
+            for (int l = 0; l < dataSize; l++)
+            {
+                int targetPosition = 0;
+                for (int i = 0; i < positions[l]; i++)
+                {
+                    targetPosition += dimS[i];
+                }
+                targetPosition += filledS[positions[l]];
+                S[targetPosition + threadidx * dataSize] = l;
+                filledS[positions[l]] += 1;
+                totalNormAvg[positions[l] + threadidx * clusterNumber] =
+                        totalNormAvg[positions[l] + threadidx * clusterNumber] + sum[positions[l] * dataSize + l];
+            }
+
+            for (int i = 0; i < clusterNumber; i++)
+            {
+                if (dimS[i + threadidx * clusterNumber] > 0)
+                {
+                    totalNormAvg[i + threadidx * clusterNumber] =
+                            totalNormAvg[i + threadidx * clusterNumber] / dimS[i + threadidx * clusterNumber];
+                }
+            }
         }
 //        if (threadidx == 0)
 //        {
-        int *tmp = S_old;
-        S_old = S;
-        S = tmp;
+        int *tmp = positions_old;
+        positions_old = positions;
+        positions = tmp;
 //        }
 //        printf("Questa è la fine... %i\n", quit);
     }
 
     delete[] filledS;
-    delete[] min;
-    delete[] posMin;
 }
 
 bool isNullOrWhitespace(const std::string &str)
@@ -459,17 +540,26 @@ void formatClusters(vector<string> &labels, int clusters[], const int dimS[], si
     ofstream out_file;
     out_file.open(output_file);
     int *processedCluster = new int[clusterNumber];
-    for (size_t col = 0; col < clusterNumber; col++)
     {
-//        table << setw(width) << col;
-        processedCluster[col] = 0;
+        ostringstream table;
+
+        for (size_t col = 0; col < clusterNumber; col++)
+        {
+            table << setw(width) << col;
+            processedCluster[col] = 0;
+        }
+        table << setw(width / 2) << endl;
+        for (int i = 0; i < clusterNumber * width; i++)
+        {
+            table << "·";
+        }
+        table << endl;
+        out_file << table.str();
+        if (print)
+        {
+            cout << table.str();
+        }
     }
-//    table << setw(width / 2) << endl;
-//    for (int i = 0; i < clusterNumber * width; i++)
-//    {
-//        table << "·";
-//    }
-//    table << endl;
     size_t processed = 0;
     const size_t chunk = 1000;
     while (processed < dataSize)
@@ -525,15 +615,18 @@ int main(int argc, char *argv[])
 //    auto t1 = chrono::high_resolution_clock::now();
     double *res;
     double *sum;
-    int *S;
-    int *S_old;
-    int *S_old_h;
+//    int *S;
+//    int *S_old;
+//    int *S_old_h;
     int *S_host;
-    int *dimS;
+//    int *dimS;
     int *dimS_host;
-    double *totalNormAvg;
+//    double *totalNormAvg;
     double *centroids;
     double *data_d;
+    int *positions;
+    int *positions_old;
+    int *positions_d;
 
     int cluster_number = DEFAULT_CLUSTER_NUMBER;
     string target_file = "../../test_reale.csv";
@@ -583,25 +676,28 @@ int main(int argc, char *argv[])
 
     // Allocate host memory
     S_host = new int[element_count];
-    S_old_h = new int[element_count];
+//    S_old_h = new int[element_count];
     int *bestS = new int[element_count];
     dimS_host = new int[cluster_number];
     double *totalNormAvg_host = new double[cluster_number];
     double *sum_h = new double[element_count * cluster_number];
+    positions = new int[element_count];
+    positions_old = new int[element_count];
 //    double *sum_h;
 //    CUDA_CHECK_RETURN(cudaMallocHost((double **) &sum_h, sizeof(double)*element_count * cluster_number));
 
     // Allocate device memory
-    CUDA_CHECK_RETURN(
-            cudaMalloc((void **) &res, sizeof(double) * dataVec.size() * cluster_number));
+//    CUDA_CHECK_RETURN(
+//            cudaMalloc((void **) &res, sizeof(double) * dataVec.size() * cluster_number));
     CUDA_CHECK_RETURN(
             cudaMalloc((void **) &sum, sizeof(double) * element_count * cluster_number));
-    CUDA_CHECK_RETURN(cudaMalloc((void **) &S, sizeof(int) * element_count));
+//    CUDA_CHECK_RETURN(cudaMalloc((void **) &S, sizeof(int) * element_count));
 //    CUDA_CHECK_RETURN(cudaMalloc((void **) &S_old, sizeof(int) * element_count * numberOfConcurrentKmeans));
-    CUDA_CHECK_RETURN(cudaMalloc((void **) &dimS, sizeof(int) * cluster_number));
+//    CUDA_CHECK_RETURN(cudaMalloc((void **) &dimS, sizeof(int) * cluster_number));
 //    CUDA_CHECK_RETURN(cudaMalloc((void **) &totalNormAvg, sizeof(double) * cluster_number * numberOfConcurrentKmeans));
     CUDA_CHECK_RETURN(cudaMalloc((void **) &centroids, sizeof(double) * cluster_number * n));
     CUDA_CHECK_RETURN(cudaMalloc((void **) &data_d, sizeof(double) * dataVec.size()));
+    CUDA_CHECK_RETURN(cudaMalloc((void **) &positions_d, sizeof(int) * element_count));
 //    CUDA_CHECK_RETURN(cudaMalloc((void **) &convergedK_d, sizeof(bool) * numberOfConcurrentKmeans));
 
     // Transfer data from host to device memory
@@ -616,7 +712,7 @@ int main(int argc, char *argv[])
                        cudaMemcpyHostToDevice)); //i vettori inizializzati nel for prima
 
     // Executing kernel
-    cudaEvent_t start, stop;
+//    cudaEvent_t start, stop;
 //    cudaEventCreate(&start);
 //    cudaEventCreate(&stop);
 
@@ -630,8 +726,8 @@ int main(int argc, char *argv[])
 //                cudaMemcpy(convergedK_d, convergedK, sizeof(bool) * numberOfConcurrentKmeans, cudaMemcpyHostToDevice));
 //        cudaEventRecord(start);
         kmeanDevice(S_host, dimS_host, n, totalNormAvg_host, data_d, centroidInit, res, sum_h,
-                    element_count, cluster_number, S_old_h, &converged,
-                    centroids, sum, dimS, S, data);
+                    element_count, cluster_number, &converged,
+                    centroids, sum, positions, positions_old, positions_d);
 //        cudaEventRecord(stop);
 //        cudaEventSynchronize(stop);
         float millisecondsTmp = 0;
@@ -658,8 +754,8 @@ int main(int argc, char *argv[])
             {
                 minAvgNorm = totNorm;
                 memcpy(bestS, S_host, sizeof(int) * element_count);
-                CUDA_CHECK_RETURN(cudaMemcpy(dimS_host, dimS, sizeof(int) * cluster_number,
-                                             cudaMemcpyDeviceToHost));
+//                CUDA_CHECK_RETURN(cudaMemcpy(dimS_host, dimS, sizeof(int) * cluster_number,
+//                                             cudaMemcpyDeviceToHost));
             }
             if (totalRuns > 0)
             {
@@ -701,12 +797,12 @@ int main(int argc, char *argv[])
     cout << "The elapsed time in gpu was: " << milliseconds << " ms." << endl;
 
     // Deallocate device memory
-    cudaFree(res);
+//    cudaFree(res);
     cudaFree(sum);
-    cudaFree(S);
-    cudaFree(S_old);
-    cudaFree(dimS);
-    cudaFree(totalNormAvg);
+//    cudaFree(S);
+//    cudaFree(S_old);
+//    cudaFree(dimS);
+//    cudaFree(totalNormAvg);
     cudaFree(centroids);
     cudaFree(data_d);
 //    cudaFree(convergedK_d);
