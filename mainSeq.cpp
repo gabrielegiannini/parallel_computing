@@ -186,10 +186,12 @@ int main(int argc, char *argv[])
     int ngrams_time = 0;
     int n = 2;
     bool isNgram = true;
+    long total_ngrams_analyzed = 0;
     /* si può passare al programma il numero di thread da avviare, default 4, oopure "hw" per indicare che deve
      * usare un num di thread in base all'hardware del pc (numThread = n° di thread della cpu)
      * si può passare anche n, ovvero la grandezza degli n-grammi da calcolare
      */
+    auto t1 = high_resolution_clock::now();
     for (int j = 1; j < argc; j++)
     {
         const string token = string(argv[j]);
@@ -228,7 +230,6 @@ int main(int argc, char *argv[])
 
         for (const auto &entry : fs::directory_iterator("./analyze"))
         {
-            auto t1 = high_resolution_clock::now();
             const auto &path = entry.path();
             if (path.extension() != ".txt")
             {
@@ -236,33 +237,32 @@ int main(int argc, char *argv[])
             }
             fToString = fileToString(path);
             unordered_map<string, int> map = ngrams(n, fToString, isNgram);
-            auto t2 = high_resolution_clock::now();
-            auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
-            ngrams_time += ms_int.count();
             ofstream outFile;
             const string outPath = "analysis-" + path.stem().string() + ".csv";
             outFile.open(fs::path("output/" + outPath));
             outFile << n << "-gram\tOccurrencies" << "\n";
             for (const auto &p : map)
             {
+                total_ngrams_analyzed += p.second;
                 outFile << p.first << "\t" << p.second << "\n";
             }
         }
-
+        auto t2 = high_resolution_clock::now();
+        auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
+        ngrams_time += ms_int.count();
     }
+    cout << "total_ngrams_analysìzed: "<< total_ngrams_analyzed <<endl;
     cout << "" << endl;
-    cout << "Completion time ngramsOMP: " << ngrams_time << "µs" << endl;
+    cout << "Completion time ngramsSEQ: " << ngrams_time << "µs" << endl;
     //cout << "Completion time norma: " << 0<< "µs" <<endl;
     //cout << "Completion time meanz: " << 0<< "µs" <<endl;
     //cout << "Tempo altre operazioni in kmean device: " << 0<< "µs" <<endl;
     cout << "" << endl;
-    cout << "Throughput ngramsOMP: " << 1.0 / ngrams_time << " operations executed in 1/Completion time" << endl;
+    cout << "Throughput ngramsSEQ: " << 1.0 / (1.0 * ngrams_time / total_ngrams_analyzed) << " operations executed in 1/Service time" << endl;
     //cout << "Throughput norma: " << 0<< " operations executed in 1/Completion time" <<endl;
     //cout << "Throughput meanz: " << 0<< " operations executed in 1/Completion time" <<endl;
     cout << "" << endl;
-    cout
-            << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time"
-            << endl;
+    cout << "Service time: "<< 1.0 * ngrams_time / total_ngrams_analyzed << endl;
     cout << "" << endl;
     cout << "Latency: uguale al Service time" << endl;
     cout << "" << endl;
