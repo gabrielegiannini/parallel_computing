@@ -145,14 +145,17 @@ normA2(const double vect[], const double centroids[], double res[], const size_t
     // trueIndex = il vettore sul quale deve operare questo thread
     const uint trueIndex = blockOffset + blockIdx.x * vectorsPerThread + threadIdx.x;
 //    __syncthreads();
-    double tmpSum = 0;
-    for (int i = 0; i < n; i++)
+    for(int h = 0; h < clusterNumber; h++)
     {
-        double diff = vect[trueIndex * n + i] -
-                      centroids[threadIdx.y * n + i + kmeanIndex * n * clusterNumber];
-        tmpSum = tmpSum + diff * diff;
+        double tmpSum = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double diff = vect[trueIndex * n + i] -
+                    centroids[h * n + i + kmeanIndex * n * clusterNumber];
+            tmpSum = tmpSum + diff * diff;
+        }
+        sum[h * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] = tmpSum;
     }
-    sum[threadIdx.y * dataSize + trueIndex + kmeanIndex * dataSize * clusterNumber] = tmpSum;
 }
 
 __global__ void clustering(double centroids[], const double data[], ulong n, const int kmeanIndex,
@@ -292,15 +295,15 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
                 cudaMemcpy(centroids_d, centroids, sizeof(double) * n * clusterNumber,
                            cudaMemcpyHostToDevice));
 
-        ulong blockNum = (dataSize / (dimensions));
+        ulong blockNum = (dataSize / 1024);
         dim3 blockDimensions(dimensions, clusterNumber);
         if (blockNum > 0)
         {
-            normA2<<<blockNum, blockDimensions>>>(data, centroids_d, res, n, sum_d, dataSize, 0, clusterNumber,
-                                                  dimensions, 0);
+            normA2<<<blockNum, 1024>>>(data, centroids_d, res, n, sum_d, dataSize, 0, clusterNumber,
+                                                  1024, 0);
         }
 
-        ulong lastVectors = dataSize - blockNum * dimensions;
+        ulong lastVectors = dataSize - blockNum * 1024;
         if (lastVectors > 0)
         {
             dim3 lastBlockDim(lastVectors, clusterNumber);
@@ -313,11 +316,11 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
 //                                                                                    dataSize, 0, clusterNumber,
 //                                                                                    lastVectors,
 //                                                                                    blockNum * (dimensions));
-            normA2<<<1, lastBlockDim>>>(data, centroids_d, res, n, sum_d,
+            normA2<<<1, lastVectors>>>(data, centroids_d, res, n, sum_d,
                                         dataSize,
                                         0, clusterNumber,
                                         lastVectors,
-                                        blockNum * (dimensions));
+                                        blockNum * (1024));
         }
         cudaDeviceSynchronize();
 //        CUDA_CHECK_RETURN(
