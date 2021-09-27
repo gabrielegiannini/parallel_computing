@@ -187,6 +187,41 @@ __global__ void clustering(double centroids[], const double data[], ulong n, con
 }
 
 __global__ void
+allInOne(const double data[], const double centroids[], double newCentroids[], const ulong n, double sum[],
+         const ulong dataSize,
+         int kmeanIndex, const ulong clusterNumber, const ulong blockOffset, int positions[])
+{
+    const ulong trueIndex = blockOffset + blockIdx.x * 1024 + threadIdx.x;
+    int posMin = 0;
+    auto min = DBL_MAX;
+    for (int h = 0; h < clusterNumber; h++)
+    {
+        double tmpSum = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double diff = data[trueIndex * n + i] -
+                          centroids[h * n + i + kmeanIndex * n * clusterNumber];
+            tmpSum = tmpSum + diff * diff;
+        }
+        sum[h * dataSize + kmeanIndex * clusterNumber * dataSize + trueIndex] = tmpSum;
+        if (tmpSum < min)
+        {
+            min = tmpSum;
+            posMin = h;
+        }
+    }
+    //segna che il vettore v appartiene al cluster posMin
+    positions[trueIndex] = posMin;
+
+    //ora sappiamo a che cluster appartiene il vettore, aggiungiamolo alla somma per il calcolo del nuovo centroide di quel cluster
+    for (int i = 0; i < n; i++)
+    {
+        atomicAdd(newCentroids + posMin * n + i, data[trueIndex * n + i]);
+        //        centroids[posMin * n + i] += data[v * n + i];
+    }
+}
+
+__global__ void
 meanz(double centroids[], const double data[], const int S[], const int dimS[], size_t n, int kmeanIndex,
       size_t clusterNumber, int dataSize)
 {// calcola centroidi
@@ -257,7 +292,7 @@ void
 kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double data[], double centroids[],
             double res[],
             double sum[], size_t dataSize, uint clusterNumber, bool *convergedK,
-            double *centroids_d, double *sum_d,
+            double *centroids_d, double newCentroids_d[], double *sum_d,
             int positions_g[], int positions_old_g[], int positions_d[])
 {
     bool quit;
@@ -286,40 +321,36 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
             filledS[h] = 0;
         }
 
-        const uint dimensions = (uint) (1024.0l / clusterNumber);
+//        const uint dimensions = (uint) (1024.0l / clusterNumber);
 
         CUDA_CHECK_RETURN(
                 cudaMemcpy(centroids_d, centroids, sizeof(double) * n * clusterNumber,
                            cudaMemcpyHostToDevice));
+        fill_n(centroids, n * clusterNumber, 0.0);
+        CUDA_CHECK_RETURN(
+                cudaMemcpy(newCentroids_d, centroids, sizeof(double) * n * clusterNumber,
+                           cudaMemcpyHostToDevice));
 
-        ulong blockNum = (dataSize / (dimensions));
-        dim3 blockDimensions(dimensions, clusterNumber);
-        if (blockNum > 0)
-        {
-            normA2<<<blockNum, blockDimensions>>>(data, centroids_d, res, n, sum_d, dataSize, 0, clusterNumber,
-                                                  dimensions, 0);
-        }
-
-        ulong lastVectors = dataSize - blockNum * dimensions;
-        if (lastVectors > 0)
-        {
-            dim3 lastBlockDim(lastVectors, clusterNumber);
+//        ulong blockNum = (dataSize / (dimensions));
+//        dim3 blockDimensions(dimensions, clusterNumber);
+//        if (blockNum > 0)
+//        {
+//            normA2<<<blockNum, blockDimensions>>>(data, centroids_d, res, n, sum_d, dataSize, 0, clusterNumber,
+//                                                  dimensions, 0);
+//        }
+//
+//        ulong lastVectors = dataSize - blockNum * dimensions;
+//        if (lastVectors > 0)
+//        {
+//            dim3 lastBlockDim(lastVectors, clusterNumber);
 //            dim3 lastGridDim(1, clusterNumber);
-//            normA<<<lastGridDim, lastBlockDim>>>(data, centroids_d, res, n, sum_d,
-//                                                                                   dataSize, 0, clusterNumber,
-//                                                                                   lastVectors,
-//                                                                                   blockNum * (dimensions));
-//            normA1<<<lastGridDim, lastBlockDim, sizeof(double) * lastVectors * n>>>(data, centroids_d, res, n, sum_d,
-//                                                                                    dataSize, 0, clusterNumber,
-//                                                                                    lastVectors,
-//                                                                                    blockNum * (dimensions));
-            normA2<<<1, lastBlockDim>>>(data, centroids_d, res, n, sum_d,
-                                        dataSize,
-                                        0, clusterNumber,
-                                        lastVectors,
-                                        blockNum * (dimensions));
-        }
-        cudaDeviceSynchronize();
+//            normA2<<<1, lastBlockDim>>>(data, centroids_d, res, n, sum_d,
+//                                        dataSize,
+//                                        0, clusterNumber,
+//                                        lastVectors,
+//                                        blockNum * (dimensions));
+//        }
+//        cudaDeviceSynchronize();
 //        CUDA_CHECK_RETURN(
 //                cudaMemcpy(sum, sum_d, sizeof(double) * dataSize * clusterNumber,
 //                           cudaMemcpyDeviceToHost));
@@ -336,27 +367,32 @@ kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], const double d
 //            dimS[posMin[v] + threadidx * clusterNumber] += 1;
 //        }
 
-        fill_n(centroids, clusterNumber, 0.0);
-        CUDA_CHECK_RETURN(
-                cudaMemcpy(centroids_d, centroids, sizeof(double) * n * clusterNumber,
-                           cudaMemcpyHostToDevice));
-        blockNum = dataSize / 1024;
+//        fill_n(centroids, clusterNumber, 0.0);
+//        CUDA_CHECK_RETURN(
+//                cudaMemcpy(centroids_d, centroids, sizeof(double) * n * clusterNumber,
+//                           cudaMemcpyHostToDevice));
+        uint blockNum = dataSize / 1024;
         if (blockNum > 0)
         {
-            clustering<<<blockNum, 1024>>>(centroids_d, data, n, 0, clusterNumber, dataSize, sum_d, positions_d, 0);
+//            clustering<<<blockNum, 1024>>>(centroids_d, data, n, 0, clusterNumber, dataSize, sum_d, positions_d, 0);
+            allInOne<<<blockNum, 1024>>>(data, centroids_d, newCentroids_d, n, sum_d, dataSize, 0, clusterNumber, 0,
+                                         positions_d);
         }
 
-        lastVectors = dataSize - blockNum * 1024;
+        uint lastVectors = dataSize - blockNum * 1024;
         if (lastVectors > 0)
         {
-            clustering<<<1, lastVectors>>>(centroids_d, data, n, 0, clusterNumber, dataSize, sum_d, positions_d,
-                                           blockNum * 1024);
+//            clustering<<<1, lastVectors>>>(centroids_d, data, n, 0, clusterNumber, dataSize, sum_d, positions_d,
+//                                           blockNum * 1024);
+            allInOne<<<1, lastVectors>>>(data, centroids_d, newCentroids_d, n, sum_d, dataSize, 0, clusterNumber,
+                                         blockNum * 1024,
+                                         positions_d);
         }
 
         cudaDeviceSynchronize();
         CUDA_CHECK_RETURN(cudaMemcpy(positions, positions_d, sizeof(int) * dataSize, cudaMemcpyDeviceToHost));
         CUDA_CHECK_RETURN(
-                cudaMemcpy(centroids, centroids_d, sizeof(double) * n * clusterNumber,
+                cudaMemcpy(centroids, newCentroids_d, sizeof(double) * n * clusterNumber,
                            cudaMemcpyDeviceToHost));
         fill(dimS, dimS + clusterNumber, 0);
 //        cout << "[";
@@ -623,6 +659,7 @@ int main(int argc, char *argv[])
     int *dimS_host;
 //    double *totalNormAvg;
     double *centroids;
+    double *nextCentroids;
     double *data_d;
     int *positions;
     int *positions_old;
@@ -696,12 +733,17 @@ int main(int argc, char *argv[])
 //    CUDA_CHECK_RETURN(cudaMalloc((void **) &dimS, sizeof(int) * cluster_number));
 //    CUDA_CHECK_RETURN(cudaMalloc((void **) &totalNormAvg, sizeof(double) * cluster_number * numberOfConcurrentKmeans));
     CUDA_CHECK_RETURN(cudaMalloc((void **) &centroids, sizeof(double) * cluster_number * n));
+    CUDA_CHECK_RETURN(cudaMalloc((void **) &nextCentroids, sizeof(double) * cluster_number * n));
     CUDA_CHECK_RETURN(cudaMalloc((void **) &data_d, sizeof(double) * dataVec.size()));
     CUDA_CHECK_RETURN(cudaMalloc((void **) &positions_d, sizeof(int) * element_count));
 //    CUDA_CHECK_RETURN(cudaMalloc((void **) &convergedK_d, sizeof(bool) * numberOfConcurrentKmeans));
 
     // Transfer data from host to device memory
     CUDA_CHECK_RETURN(cudaMemcpy(data_d, data, sizeof(double) * dataVec.size(), cudaMemcpyHostToDevice));
+
+    fill_n(centroidInit, n * cluster_number, 0.0);
+    CUDA_CHECK_RETURN(cudaMemcpy(nextCentroids, centroidInit, sizeof(double) * n * cluster_number,
+                                 cudaMemcpyHostToDevice));
 
     //init cluster picking random arrays from data
     srand(time(nullptr));
@@ -727,7 +769,7 @@ int main(int argc, char *argv[])
 //        cudaEventRecord(start);
         kmeanDevice(S_host, dimS_host, n, totalNormAvg_host, data_d, centroidInit, res, sum_h,
                     element_count, cluster_number, &converged,
-                    centroids, sum, positions, positions_old, positions_d);
+                    centroids, nextCentroids, sum, positions, positions_old, positions_d);
 //        cudaEventRecord(stop);
 //        cudaEventSynchronize(stop);
         float millisecondsTmp = 0;
