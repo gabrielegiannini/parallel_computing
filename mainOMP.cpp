@@ -194,10 +194,13 @@ int main(int argc, char *argv[])
     bool isNgram = true;
     long ngrams_per_thread = 0;
     long total_ngrams_analyzed = 0;
+    int numberOfExec = 100;
+    double throughputMeanAllExec = 0.0;
     /* si può passare al programma il numero di thread da avviare, default 4, oopure "hw" per indicare che deve
      * usare un num di thread in base all'hardware del pc (numThread = n° di thread della cpu)
      * si può passare anche n, ovvero la grandezza degli n-grammi da calcolare
      */
+    while(numberOfExec > 0) {
     auto t1 = high_resolution_clock::now();
     for (int j = 1; j < argc; j++)
     {
@@ -299,12 +302,19 @@ int main(int argc, char *argv[])
         auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
         ngrams_time += ms_int.count();
     }
+    throughputMeanAllExec += 1.0 / (1.0 * ngrams_time / total_ngrams_analyzed);
+    numberOfExec -- ;
+    cout << numberOfExec << endl;
+    }
+    throughputMeanAllExec /= 100;
+    total_ngrams_analyzed /= 100;
+    ngrams_time /= 100;
     ngrams_per_thread = total_ngrams_analyzed/numThreads; //e' il nostro stream dimension
     cout << "total_ngrams_analysìzed: "<< total_ngrams_analyzed <<endl;
     cout << "" << endl;
     cout << "Completion time ngramsOMP: " << ngrams_time << "µs" << endl;
     cout << "" << endl;
-    cout << "Throughput ngramsOMP: " << 1.0 /(1.0*ngrams_time/total_ngrams_analyzed) << " operations executed in 1/Completion time" << endl;
+    cout << "Throughput ngramsOMP: " << throughputMeanAllExec << " operations executed in 1/Completion time" << endl;
     cout << "" << endl;
     cout << "Service time: " << 1.0 * ngrams_time/total_ngrams_analyzed << endl;
     cout << "" << endl;

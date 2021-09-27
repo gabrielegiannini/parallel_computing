@@ -1,0 +1,1 @@
+/usr/bin/c++  -O3 -fopenmp CMakeFiles/ngrams-seq.dir/mainSeq.cpp.o -o ngrams-seq   -L/usr/local/lib  -L/usr/local/opt/llvm/lib 

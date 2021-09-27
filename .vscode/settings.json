@@ -3,6 +3,8 @@
         "string": "cpp",
         "utility": "cpp",
         "iosfwd": "cpp",
-        "unordered_map": "cpp"
+        "unordered_map": "cpp",
+        "chrono": "cpp",
+        "cctype": "cpp"
     }
 }

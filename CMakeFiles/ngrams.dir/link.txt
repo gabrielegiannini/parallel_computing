@@ -1,0 +1,1 @@
+/usr/bin/c++  -O3 -fopenmp CMakeFiles/ngrams.dir/main.cpp.o -o ngrams   -L/usr/local/lib  -L/usr/local/opt/llvm/lib  -Wl,-rpath,/usr/local/lib:/usr/local/opt/llvm/lib -lpthread 

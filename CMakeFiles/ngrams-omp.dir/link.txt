@@ -1,0 +1,1 @@
+/usr/bin/c++  -O3 -fopenmp CMakeFiles/ngrams-omp.dir/mainOMP.cpp.o -o ngrams-omp   -L/usr/local/lib  -L/usr/local/opt/llvm/lib 

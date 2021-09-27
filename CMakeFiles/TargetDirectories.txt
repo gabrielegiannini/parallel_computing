@@ -1,0 +1,5 @@
+/home/gbariele/kmeans/parallel_computing/CMakeFiles/rebuild_cache.dir
+/home/gbariele/kmeans/parallel_computing/CMakeFiles/edit_cache.dir
+/home/gbariele/kmeans/parallel_computing/CMakeFiles/ngrams-omp.dir
+/home/gbariele/kmeans/parallel_computing/CMakeFiles/ngrams-seq.dir
+/home/gbariele/kmeans/parallel_computing/CMakeFiles/ngrams.dir
