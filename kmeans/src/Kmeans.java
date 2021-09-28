@@ -40,7 +40,7 @@ public class Kmeans {
             int posMin = 0;
 
             double min = Double.MAX_VALUE;
-            long startTime = System.nanoTime();
+            //long startTime = System.nanoTime();
             for (int h = 0; h < means.length; h++) {
                 double norm = norm(entry.getValue(), means[h]);
                 if (norm < min) {
@@ -48,8 +48,8 @@ public class Kmeans {
                     posMin = h;
                 }
             }
-            long endTime = System.nanoTime();
-            metrics[1] += (endTime - startTime);
+//            long endTime = System.nanoTime();
+//            metrics[1] += (endTime - startTime);
             S[posMin].add(entry.getKey());
             totalNormAvg[posMin] = totalNormAvg[posMin] + min;
         }
@@ -61,7 +61,7 @@ public class Kmeans {
     }
 
     public long means() {//calcola centroidi
-        long startTime = System.nanoTime();
+//        long startTime = System.nanoTime();
         for (int i = 0; i < means.length; i++) {
             for (int j = 0; j < means[i].length; j++) {
                 means[i][j] = 0;
@@ -71,12 +71,13 @@ public class Kmeans {
                 means[i][j] = means[i][j] / S[i].size();
             }
         }
-        long endTime = System.nanoTime();
-        return (endTime - startTime);
+//        long endTime = System.nanoTime();
+//        return (endTime - startTime);
+        return 0;
     }
 
     public double[] executeKMeans(long[] metrics) {
-        long startTime = System.nanoTime();
+//        long startTime = System.nanoTime();
         long counter = 0;
         do {
             F = S;
@@ -84,7 +85,7 @@ public class Kmeans {
             counter++;
         } while (notConverged());
         long endTime = System.nanoTime();
-        metrics[3] += (endTime - startTime);
+//        metrics[3] += (endTime - startTime);
         metrics[4] += counter;
         return getTotalNormAvg();
     }
@@ -158,7 +159,7 @@ public class Kmeans {
 
     public static void main(String[] args) throws Exception {
         long[] metrics = {0, 0, 0, 0, 0};
-        long startTime = System.nanoTime();
+//        long startTime = System.nanoTime();
         List<String> positionals = new LinkedList<String>();
 
         boolean initRandomClusters = Common.extractArguments(args, positionals);
@@ -189,8 +190,8 @@ public class Kmeans {
         }
 //        System.out.println(Common.formatTable(G));
         Common.printList(G);
-        long endTime = System.nanoTime();
-        metrics[0] = endTime - startTime;
+//        long endTime = System.nanoTime();
+//        metrics[0] = endTime - startTime;
         Common.printMetrics(metrics, clustersNumber);
     }
 
