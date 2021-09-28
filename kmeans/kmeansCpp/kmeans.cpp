@@ -24,9 +24,9 @@ using std::chrono::milliseconds;
 
 // dataSize è il numero di vettori, ovvero sizeof(data) / n (sennò aveva davvero poco senso)
 void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], double **data, double **centroids,
-                 double **sum, size_t dataSize, uint clusterNumber, int norma_time, int meanz_time,
+                 double **sum, size_t dataSize, uint clusterNumber,
                  double **new_centroids,
-                 int positions[], int positions_old[])
+                 int positions[])
 {
     for (int h = 0; h < clusterNumber; h++)
     {
@@ -313,15 +313,12 @@ int main(int argc, char *argv[])
     //kmeans
     size_t iterazioni = 0;
     double minAvgNorm = DBL_MAX;
-    int kmeans_device_time = 0;
-    int norma_time = 0;
-    int meanz_time = 0;
     while (totalRuns > 0)
     {
         bool converged = true;
 //        auto t1 = high_resolution_clock::now();
         kmeanDevice(S_host, dimS, n, totalNormAvg, data_bidimensional, centroids, sum,
-                    element_count, cluster_number, norma_time, meanz_time, new_centroids, positions, positions_old);
+                    element_count, cluster_number, new_centroids, positions);
         double **temp = centroids;
         centroids = new_centroids;
         new_centroids = temp;
@@ -392,7 +389,6 @@ int main(int argc, char *argv[])
     delete[] dimS;
     delete[] bestS;
     delete[] totalNormAvg_host;
-//    delete[]res;
     delete[]sum;
     delete[] centroids;
     delete[] new_centroids;
@@ -400,15 +396,6 @@ int main(int argc, char *argv[])
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
     cout << "" << endl;
     cout << "Total execution time: " << elapsed << " µs (" << elapsed / 1000000.0l << " s)." << endl;
-    cout << "Completion time kmean device: " << kmeans_device_time << "µs" << endl;
-    cout << "Completion time norma: " << norma_time << "µs" << endl;
-    cout << "Completion time meanz: " << meanz_time << "µs" << endl;
-    cout << "Tempo altre operazioni in kmean device: " << kmeans_device_time - norma_time - meanz_time << "µs" << endl;
-    cout << "" << endl;
-    cout << "Throughput kmean device: " << 1.0 / kmeans_device_time << " operations executed in 1/Completion time"
-         << endl;
-    cout << "Throughput norma: " << 1.0 / norma_time << " operations executed in 1/Completion time" << endl;
-    cout << "Throughput meanz: " << 1.0 / meanz_time << " operations executed in 1/Completion time" << endl;
     cout << "" << endl;
     cout
             << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time"
