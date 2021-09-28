@@ -22,149 +22,72 @@ using std::chrono::milliseconds;
 #define DEFAULT_CLUSTER_NUMBER 5
 #define ARRAYSIZEOF(ptr) (sizeof(ptr)/sizeof(ptr[0]))
 
-void normA(double **vect, double **centroids, double ***res, double **sum, const size_t dataSize, const size_t clusterNumber, const int n){
-    /* 
-       Calcoliamo la norma fra un vettore e un centroide
-       allora, res contiene i risultati intermedi del calcolo della norma, ovvero i quadrati delle differenze fra coordinate corrispondenti dei vettori
-    */
-
-    //res = new double[dataVec.size()][cluster_number];
-    //vect e' double data[dataVec.size()];
-    //centroids e' centroids = new double [cluster_number][n];
-
-    for(int j=0 ; j<clusterNumber ; j++){
-        for(int i=0 ; i<dataSize ; i++){
-            for(int k=0; k<n; k++){
-                double diff = vect[i][k] - centroids[j][k];
-                res[i][j][k] = diff*diff; //non sono molto sicuro di questa riga
-            }
-        }
-    }
-
-    //sum e' sum = new double[element_count][cluster_number];
-    for(int k=0 ; k<dataSize ; k++){
-        for(int h=0 ; h<clusterNumber ; h++){
-            sum[k][h] = 0;
-        }
-    }
-    for (int i = 0; i < dataSize; i++){
-        for(int j=0; j<clusterNumber ; j++){
-            for(int k=0; k<n; k++){
-                sum[i][j] = sum[i][j] + res[i][j][k];
-            }
-        }
-    }
-}
-
-void meanz(double **centroids, double **data, const int S[], const int dimS[], size_t n, size_t clusterNumber, int dataSize){
-    // calcola centroidi
-    //centroids e' centroids = new double [cluster_number][n];
-
-    //set to 0 all the values
-    for(int i=0 ; i<clusterNumber ; i++){
-        for(int j=0 ; j<n ; j++){
-            centroids[i][j] = 0;
-        }
-    }
-    size_t dimSum = 0;
-
-    // scorre tutti gli elementi del cluster (la grandezza del cluster e' in dimS[blockIdx.x])
-    for (int i = 0; i < clusterNumber; i++){
-        int k = dimSum;
-        while(k<dimS[i]+dimSum){
-            // quindi alla fine in centroids c'e' la somma di tutte le n-esime coordinate di ogni elemento del cluster
-            for (int j=0; j<n ; j++) {
-                    centroids[i][j] = centroids[i][j] + data[S[k]][j];
-            }
-            k++;
-        }
-        dimSum += dimS[i];
-    }
-
-
-    // divide per la dimensione del cluster per fare la media -> coordinata n-esima del nuovo centroide di questo cluster
-    //dimS e' di dimensione clusterNumber
-    for (int i = 0; i < clusterNumber; i++){
-        for (int j=0; j<n ; j++) {
-            centroids[i][j] = centroids[i][j] / dimS[i];
-        }
-    }
-
-}
-
-
 // dataSize è il numero di vettori, ovvero sizeof(data) / n (sennò aveva davvero poco senso)
-int *kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], double **data, double **centroids, double ***res,
-            double **sum, size_t dataSize, uint clusterNumber, int norma_time, int meanz_time)
+void kmeanDevice(int S[], int dimS[], size_t n, double totalNormAvg[], double **data, double **centroids,
+                 double **sum, size_t dataSize, uint clusterNumber,
+                 double **new_centroids,
+                 int positions[])
 {
-    int *vect = new int[2];
-    int *posMin = new int[dataSize];
-    auto *min = new double[dataSize]; //inizializzare a DBL_MAX
-
-
-    // array delle norme. no cuda
-    for (int h = 0; h < dataSize; h++)
-    {
-        min[h] = DBL_MAX;
-        posMin[h] = 0;
-    }
-
-
-    // array delle norme. no cuda
-    int *filledS = new int[clusterNumber];
     for (int h = 0; h < clusterNumber; h++)
     {
         dimS[h] = 0;
         totalNormAvg[h] = 0;
-        filledS[h] = 0;
     }
 
-    auto t1 = high_resolution_clock::now();
-    normA(data, centroids, res, sum, dataSize, clusterNumber, n);
-    auto t2 = high_resolution_clock::now();
-    auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
-    vect[0] = ms_int.count();
+    for (int h = 0; h < clusterNumber; h++)
+    {
+        for (int d = 0; d < n; d++)
+        {
+            new_centroids[h][d] = 0;
+        }
+    }
 
-    //min sum evaluation and increase dimS in the position relative to the min value evaluated
-    for (int v = 0; v < dataSize; v++){
-        for (int h = 0; h < clusterNumber; h++){
-            if (sum[v][h] < min[v]){
-                min[v] = sum[v][h];
-                posMin[v] = h;
+    for (int i = 0; i < dataSize; i++)
+    {
+        int posMin = 0;
+        auto min = DBL_MAX;
+        for (int j = 0; j < clusterNumber; j++)
+        {
+            double tmpSum = 0;
+            for (int k = 0; k < n; k++)
+            {
+                double diff = data[i][k] - centroids[j][k];
+                tmpSum += diff * diff;
+            }
+            if (tmpSum < min)
+            {
+                min = tmpSum;
+                posMin = j;
             }
         }
-        dimS[posMin[v]] += 1;
+        positions[i] = posMin;
+        for (int k = 0; k < n; k++)
+        {
+            new_centroids[posMin][k] += data[i][k];
+        }
     }
 
-    //filling S
-    for (int l = 0; l < dataSize; l++){
-        int targetPosition = 0;
-        for (int i = 0; i < posMin[l]; i++){
-            targetPosition += dimS[i];
+    fill_n(dimS, clusterNumber, 0);
+    for (int v = 0; v < dataSize; v++)
+    {
+        dimS[positions[v]] += 1;
+    }
+    for (int h = 0; h < clusterNumber; h++)
+    {
+        for (int d = 0; d < n; d++)
+        {
+            new_centroids[h][d] = new_centroids[h][d] / dimS[h];
         }
-        targetPosition += filledS[posMin[l]];
-        S[targetPosition] = l;
-        filledS[posMin[l]] += 1;
-        totalNormAvg[posMin[l]] = totalNormAvg[posMin[l]] + min[l];
     }
 
     //evaluation of totalNormAvg
-    for (int i = 0; i < clusterNumber; i++){
-        if (dimS[i] > 0){
+    for (int i = 0; i < clusterNumber; i++)
+    {
+        if (dimS[i] > 0)
+        {
             totalNormAvg[i] = totalNormAvg[i] / dimS[i];
         }
     }
-
-    auto t12 = high_resolution_clock::now();
-    meanz(centroids, data, S, dimS, n, clusterNumber, dataSize);
-    auto t22 = high_resolution_clock::now();
-    auto ms_int2 = std::chrono::duration_cast<std::chrono::microseconds>(t22 - t12);
-    vect[1] = ms_int2.count();
-
-    delete[] filledS;
-    delete[] min;
-    delete[] posMin;
-    return vect;
 }
 
 bool isNullOrWhitespace(const std::string &str)
@@ -284,11 +207,10 @@ void initClusters(int cluster_number, unsigned long n, const double *data, doubl
 int main(int argc, char *argv[])
 {
     auto t1 = chrono::high_resolution_clock::now();
-    double ***res;
     double **sum;
     int *S_host;
     int *S_host_old;
-    int *dimS_host;
+    int *dimS;
     double *totalNormAvg;
     double **centroids;
     double **centroidInit;
@@ -333,7 +255,7 @@ int main(int argc, char *argv[])
     myfile.open(target_file);
     unsigned long n = parseData(myfile, dataVec, dataLabel);
     myfile.close();
-    double data[dataVec.size()];
+    auto data = new double[dataVec.size()];
     std::copy(dataVec.begin(), dataVec.end(), data);
     size_t element_count = dataLabel.size();
     cout << "Data element number: " << element_count << "\n";
@@ -344,81 +266,93 @@ int main(int argc, char *argv[])
     // Allocate host memory
     S_host = new int[element_count];
     S_host_old = new int[element_count];
+    auto positions_old = new int[element_count];
+    auto positions = new int[element_count];
     int *bestS = new int[element_count];
-    dimS_host = new int[cluster_number];
+    dimS = new int[cluster_number];
     double *totalNormAvg_host = new double[cluster_number];
     totalNormAvg = new double[cluster_number];
 
-    res = new double**[element_count];
-    for (int i=0; i<element_count; i++){
-        res[i] = new double*[cluster_number];
-    }
-    for(int k = 0; k<element_count; k++){
-        for(int j = 0; j<cluster_number; j++){
-            res[k][j] = new double[n];
-        }
-    }
-
-
-    sum = new double*[element_count];
-    for (int i=0; i<element_count; i++){
+    sum = new double *[element_count];
+    for (int i = 0; i < element_count; i++)
+    {
         sum[i] = new double[cluster_number];
     }
 
-    centroids = new double*[cluster_number];
-    for (int i=0; i<cluster_number; i++){
+    auto new_centroids = new double *[cluster_number];
+    centroids = new double *[cluster_number];
+    for (int i = 0; i < cluster_number; i++)
+    {
         centroids[i] = new double[n];
+        new_centroids[i] = new double[n];
     }
 
-    centroidInit = new double*[cluster_number];
-    for (int i=0; i<cluster_number; i++){
+    centroidInit = new double *[cluster_number];
+    for (int i = 0; i < cluster_number; i++)
+    {
         centroidInit[i] = new double[n];
     }
 
-    data_bidimensional = new double*[element_count];
-    for (int i=0; i<element_count; i++){
+    data_bidimensional = new double *[element_count];
+    for (int i = 0; i < element_count; i++)
+    {
         data_bidimensional[i] = new double[n];
     }
-    for (int j=0; j<element_count; j++){
-        for (int k=0; k<n; k++){
-            data_bidimensional[j][k]=data[j*n + k];
+    for (int j = 0; j < element_count; j++)
+    {
+        for (int k = 0; k < n; k++)
+        {
+            data_bidimensional[j][k] = data[j * n + k];
         }
     }
 
 
     //init cluster picking random arrays from data
     srand(time(nullptr));
-    initClusters(cluster_number, n, data, centroidInit, element_count); //dovrebbe essere ok
+    initClusters(cluster_number, n, data, centroids, element_count); //dovrebbe essere ok
     //kmeans
     size_t iterazioni = 0;
     double minAvgNorm = DBL_MAX;
-    int kmeans_device_time = 0;
-    int norma_time = 0;
-    int meanz_time = 0;
-    int *vect = new int[2];
-    float milliseconds = 0;
     while (totalRuns > 0)
     {
         bool converged = true;
-        auto t1 = high_resolution_clock::now();
-        vect = kmeanDevice(S_host, dimS_host, n, totalNormAvg, data_bidimensional, centroidInit, res, sum, element_count, cluster_number, norma_time, meanz_time);
-        norma_time += vect[0];
-        meanz_time += vect[1];
-        auto t2 = high_resolution_clock::now();
-        auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
-        kmeans_device_time += ms_int.count();
+//        auto t1 = high_resolution_clock::now();
+        kmeanDevice(S_host, dimS, n, totalNormAvg, data_bidimensional, centroids, sum,
+                    element_count, cluster_number, new_centroids, positions);
+        double **temp = centroids;
+        centroids = new_centroids;
+        new_centroids = temp;
+//        auto t2 = high_resolution_clock::now();
+//        auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
+//        kmeans_device_time += ms_int.count();
         for (int i = 0; i < element_count; i++)
         {
-            if (S_host[i] != S_host_old[i])
+            if (positions[i] != positions_old[i])
             {
                 converged = false;
                 break;
             }
         }
-        if (converged){
-            initClusters(cluster_number, n, data, centroidInit, element_count);
+        if (converged)
+        {
+            initClusters(cluster_number, n, data, centroids, element_count);
             totalRuns--;
             double totNorm = 0;
+            auto filledS = new int[cluster_number];
+            fill_n(filledS, cluster_number, 0);
+            for (int l = 0; l < element_count; l++)
+            {
+                int targetPosition = 0;
+                for (int i = 0; i < positions[l]; i++)
+                {
+                    targetPosition += dimS[i];
+                }
+                targetPosition += filledS[positions[l]];
+                S_host[targetPosition] = l;
+                filledS[positions[l]] += 1;
+                totalNormAvg[positions[l]] =
+                        totalNormAvg[positions[l]] + sum[positions[l]][l];
+            }
             for (int h = 0; h < cluster_number; h++)
             {
                 totNorm += totalNormAvg[h];
@@ -429,17 +363,16 @@ int main(int argc, char *argv[])
                 memcpy(bestS, S_host, sizeof(int) * element_count);
             }
         }
-        int *tmp = S_host_old;
-        int *tmp2 = S_host;
-        S_host_old = tmp2;
-        S_host = tmp;
+        int *tmp = positions_old;
+        positions_old = positions;
+        positions = tmp;
         iterazioni++;
     }
 
     auto t2 = chrono::high_resolution_clock::now();
     auto elapsed = chrono::duration_cast<chrono::microseconds>(t2 - t1).count();
 
-    string output = formatClusters(dataLabel, bestS, dimS_host, cluster_number, element_count);
+    string output = formatClusters(dataLabel, bestS, dimS, cluster_number, element_count);
     // write output on a file
     ofstream out_file;
     out_file.open(output_file);
@@ -453,26 +386,20 @@ int main(int argc, char *argv[])
     // Deallocate host memory
     delete[] S_host;
     delete[] S_host_old;
-    delete[] dimS_host;
+    delete[] dimS;
     delete[] bestS;
     delete[] totalNormAvg_host;
-    delete []res;
-    delete []sum;
-    delete [] centroids;
+    delete[]sum;
+    delete[] centroids;
+    delete[] new_centroids;
 
     cout << "Esecuzione terminata in " << iterazioni << " iterazioni." << endl;
     cout << "" << endl;
     cout << "Total execution time: " << elapsed << " µs (" << elapsed / 1000000.0l << " s)." << endl;
-    cout << "Completion time kmean device: " << kmeans_device_time<< "µs" <<endl;
-    cout << "Completion time norma: " << norma_time<< "µs" <<endl;
-    cout << "Completion time meanz: " << meanz_time<< "µs" <<endl;
-    cout << "Tempo altre operazioni in kmean device: " << kmeans_device_time - norma_time - meanz_time<< "µs" <<endl;
     cout << "" << endl;
-    cout << "Throughput kmean device: " << 1.0/kmeans_device_time<< " operations executed in 1/Completion time" <<endl;
-    cout << "Throughput norma: " << 1.0/norma_time<< " operations executed in 1/Completion time" <<endl;
-    cout << "Throughput meanz: " << 1.0/meanz_time<< " operations executed in 1/Completion time" <<endl;
-    cout << "" << endl;
-    cout << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time" << endl;
+    cout
+            << "Service time: dato che la probabilità delle funzioni kmean device, norma e meanz è sempre 1 allora sarà equivalente al completion time"
+            << endl;
     cout << "" << endl;
     cout << "Latency: uguale al Service time" << endl;
 
