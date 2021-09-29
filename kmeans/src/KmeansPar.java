@@ -10,7 +10,6 @@ public class KmeansPar {
 
     private final int clustersNumber;
     private final Map<String, Double[]> data;
-    private final List<Callable<Boolean>> chunks;
     boolean initialized = false;
     private final double[][] centroids;
     private final DoubleAdder[][] nextCentroids;
@@ -26,7 +25,6 @@ public class KmeansPar {
 
     public KmeansPar(final Map<String, Double[]> data, int clustersNumber, final int n) throws IOException {//costruttore
         this.data = data;
-        chunks = new ArrayList<>(data.size());
         this.n = n;
         centroids = new double[clustersNumber][n];
         nextCentroids = new DoubleAdder[clustersNumber][n];

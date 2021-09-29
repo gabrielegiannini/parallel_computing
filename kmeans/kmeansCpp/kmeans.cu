@@ -54,10 +54,6 @@ normA2(const double vect[], const double centroids[], const size_t n, double sum
        const size_t clusterNumber, const uint vectorsPerThread, const uint blockOffset)
 {
     /*
-       Calcoliamo la norma fra un vettore e un centroide
-       allora, res contiene i risultati intermedi del calcolo della norma, ovvero i quadrati delle differenze fra coordinate corrispondenti dei vettori
-       quindi e' grande #vettori*#cluster*#coordinate(cioe' dimensione dei singoli vettori, cioe' n)
-
        threadIdx.x identifica il vettore di cui calcolare la norma
        threadIdx.y identifica il cluster, ovvero il centroide con cui fare la norma
        blockIdx.x identifica quale chunk di vettori si sta calcolando (ogni chunk è fatta in modo da avere
@@ -411,9 +407,6 @@ int main(int argc, char *argv[])
         } else if (!strcmp("-p", argv[i]) || !strcmp("--print", argv[i]))
         {
             print = true;
-//        } else if (!strcmp("-pk", argv[i]) || !strcmp("--parallel-kmeans", argv[i]))
-//        {
-//            numberOfConcurrentKmeans = stoi(argv[++i]);
         } else if (!strcmp("-tr", argv[i]) || !strcmp("--total-runs", argv[i]))
         {
             totalRuns = stoi(argv[++i]);
