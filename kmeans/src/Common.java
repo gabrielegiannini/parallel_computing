@@ -7,7 +7,7 @@ import java.util.*;
 public class Common {
 
     public static final int THREAD_COUNT = 16;
-    public static final int EXECUTIONS_COUNT = 1000;
+    public static final int EXECUTIONS_COUNT = 10;
     public static final long UNIT_DIVIDER = 1000; // microseconds
 
     static int populateData(List<String> positionals, HashMap<String, Double[]> data) throws IOException {//lettura del file per creare il set di dati da utilizzare
@@ -18,8 +18,7 @@ public class Common {
             System.err.println("given path does not exists");
             System.exit(1);
         }
-        int n = parseData(csv, data);
-        return n;
+        return parseData(csv, data);
     }
 
     static boolean extractArguments(String[] args, List<String> positionals) {//gestire il flag -initClusters

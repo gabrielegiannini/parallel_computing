@@ -1,65 +1,82 @@
 import java.io.IOException;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.DoubleAdder;
 import java.util.function.BiConsumer;
 
 
-public class Kmeans {
+public class KmeansPar {
 
     private final int clustersNumber;
     private final Map<String, Double[]> data;
+    private final List<Callable<Boolean>> chunks;
+    boolean initialized = false;
     private final double[][] centroids;
-    private final double[][] nextCentroids;
+    private final DoubleAdder[][] nextCentroids;
     private Set<String>[] S;
     private Set<String>[] F;
     private final double[] totalNormAvg;
+    private final DoubleAdder[] totalNormAcc;
     private final int n;
 
     public double[] getTotalNormAvg() {
         return totalNormAvg;
     }
 
-    public Kmeans(final Map<String, Double[]> data, int clustersNumber, final int n) throws IOException {//costruttore
+    public KmeansPar(final Map<String, Double[]> data, int clustersNumber, final int n) throws IOException {//costruttore
         this.data = data;
+        chunks = new ArrayList<>(data.size());
         this.n = n;
         centroids = new double[clustersNumber][n];
-        nextCentroids = new double[clustersNumber][n];
+        nextCentroids = new DoubleAdder[clustersNumber][n];
         for (int i = 0; i < clustersNumber; i++) {
             for (int j = 0; j < n; j++) {
-                nextCentroids[i][j] = 0.0;
+                nextCentroids[i][j] = new DoubleAdder();
             }
         }
         this.clustersNumber = clustersNumber;
         totalNormAvg = new double[clustersNumber];
+        totalNormAcc = new DoubleAdder[clustersNumber];
+
+        for (int i = 0; i < clustersNumber; i++) {
+            totalNormAcc[i] = new DoubleAdder();
+        }
     }
 
-    public void kmean() {
+    public void kmean(BiConsumer<Runnable, Integer> exec, Runnable start, Runnable wait) {
         S = new Set[centroids.length];// dimensione clusterNumber. S e' array di array list
         for (int j = 0; j < S.length; j++) {
             S[j] = Collections.synchronizedSet(new HashSet<>());
         }
         // array delle norme
         Arrays.fill(totalNormAvg, 0);
-        for(int i = 0; i < clustersNumber;i++){
-            Arrays.fill(nextCentroids[i], 0.0);
-        }
 
-        for (final Entry<String, Double[]> entry : data.entrySet()) {
-            parallelizable(entry);
+        int id = 0;
+        if (!initialized) {
+            for (final Entry<String, Double[]> entry : data.entrySet()) {
+                exec.accept(() -> {
+                    this.parallelizable(entry);
+                }, id);
+                id++;
+            }
+            initialized = true;
         }
+        start.run();
+
+        wait.run();
 
         for (int i = 0; i < totalNormAvg.length; i++) {
             if (S[i].size() > 0) {
-                totalNormAvg[i] = totalNormAvg[i] / S[i].size();
+                totalNormAvg[i] = totalNormAcc[i].sumThenReset() / S[i].size();
                 for (int l = 0; l < n; l++) {
-                    centroids[i][l] = nextCentroids[i][l] / S[i].size();
+                    centroids[i][l] = nextCentroids[i][l].sumThenReset() / S[i].size();
                 }
             }
         }
     }
 
     public void parallelizable(Entry<String, Double[]> entry) {
-//        long trueIndex = blockOffset + blockIdx.x * 1024 + threadIdx.x;
         int posMin = 0;
         double min = Double.MAX_VALUE;
         var vect = entry.getValue();
@@ -72,20 +89,20 @@ public class Kmeans {
         }
         //segna che il vettore appartiene al cluster posMin
         S[posMin].add(entry.getKey());
-        totalNormAvg[posMin] += min;
+        totalNormAcc[posMin].add(min);
 
         //ora sappiamo a che cluster appartiene il vettore, aggiungiamolo alla somma per il calcolo del nuovo centroide di quel cluster
         for (int i = 0; i < n; i++) {
-            nextCentroids[posMin][i] += vect[i];
+            nextCentroids[posMin][i].add(vect[i]);
         }
     }
 
-    public double[] executeKMeans(long[] metrics) {
+    public double[] executeKMeans(BiConsumer<Runnable, Integer> exec, Runnable start, Runnable wait, long[] metrics) {
 //        long startTime = System.nanoTime();
         long counter = 0;
         do {
             F = S;
-            kmean();
+            kmean(exec, start, wait);
             counter++;
         } while (notConverged());
 //        long endTime = System.nanoTime();
@@ -166,45 +183,6 @@ public class Kmeans {
             ret[i] = new ArrayList<>(S[i]);
         }
         return ret;
-    }
-
-    public static void main(String[] args) throws Exception {
-        long[] metrics = {0, 0, 0, 0, 0};
-        long startTime = System.nanoTime();
-        List<String> positionals = new LinkedList<String>();
-
-        boolean initRandomClusters = Common.extractArguments(args, positionals);
-        HashMap<String, Double[]> data = new HashMap<>();
-        int n = Common.populateData(positionals, data);
-        int clustersNumber = Integer.parseInt(positionals.get(1)); // args[0]
-        double minimunTotal = Double.MAX_VALUE;
-        List<String>[] G = null;
-        int c = 0;
-        while (c < Common.EXECUTIONS_COUNT) {
-            Kmeans algorithm = new Kmeans(data, clustersNumber, n);
-            if (initRandomClusters) {
-                algorithm.initClusters();
-            } else {
-                algorithm.initMeans();
-            }
-            double[] totalNormAvg = null;
-            totalNormAvg = algorithm.executeKMeans(metrics);
-
-            double total = 0;
-            for (double avg : totalNormAvg) {
-                total = total + avg;
-            }
-            if (minimunTotal > total) {
-                minimunTotal = total;
-                G = algorithm.getClusters();
-            }
-            c++;
-        }
-//        System.out.println(Common.formatTable(G));
-        Common.printList(G);
-        long endTime = System.nanoTime();
-        metrics[0] = endTime - startTime;
-        Common.printMetrics(metrics, clustersNumber);
     }
 
     public static double norm(Double[] a, double[] b) {

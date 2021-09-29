@@ -1,5 +1,6 @@
-import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
 
 public class MainWithThreads {
 
@@ -12,81 +13,84 @@ public class MainWithThreads {
         int n = Common.populateData(positionals, data);
         int clustersNumber = Integer.parseInt(positionals.get(1)); // args[0]
 
-        double[][] totalNormAvgR = new double[Common.THREAD_COUNT][];
-        List<String>[][] G = new List[Common.THREAD_COUNT][];
+        final int execPerThread = data.size() / Common.THREAD_COUNT;
+//        final int execSurplus = data.size() - execPerThread * Common.THREAD_COUNT;
 
-        final boolean finalInitRandomClusters = initRandomClusters;
-        final int finalN = n;
-        final int execPerThread = Common.EXECUTIONS_COUNT / Common.THREAD_COUNT;
-        final int execSurplus = Common.EXECUTIONS_COUNT - execPerThread * Common.THREAD_COUNT;
+        //crea i thread
         Thread[] threads = new Thread[Common.THREAD_COUNT];
+        final CyclicBarrier barrierStart = new CyclicBarrier(Common.THREAD_COUNT + 1);
+        final CyclicBarrier barrierStop = new CyclicBarrier(Common.THREAD_COUNT + 1);
+        final List<Runnable>[] chunks = new List[Common.THREAD_COUNT];
+        for (int i = 0; i < threads.length; i++) {
+            chunks[i] = new ArrayList<>();
+            final int finalI = i;
+            threads[i] = new Thread(() -> {
+                while (true) {
+                    try {
+                        barrierStart.await();
+                        for (var task : chunks[finalI]) {
+                            task.run();
+                        }
+                        barrierStop.await();
+                    } catch (InterruptedException | BrokenBarrierException e) {
+                        return;
+                    }
+                }
+            });
+            threads[i].start();
+        }
         int c = 0;
+        double minimunTotal = Double.MAX_VALUE;
+        List<String>[] FINAL = null;
         long[] metrics = {0, 0, 0, 0, 0};
         while (c < threads.length) {
             final int finalC = c;
-            Thread t = new Thread(() -> {
-                List<String>[][] F = new List[execPerThread + 1][];
-                double[][] totalNormAvg = new double[execPerThread + 1][];
-                int a = 0;
-                Kmeans algorithm = null;
-                double globalAvg = Double.MAX_VALUE;
-                int globalAvgIndex = 0;
-                while (a < execPerThread || (a < execPerThread + 1 && finalC < execSurplus)) {
-                    algorithm = null;
-                    try {
-                        algorithm = new Kmeans(data, clustersNumber, finalN);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                    if (finalInitRandomClusters) {
-                        algorithm.initClusters();
-                    } else {
-                        algorithm.initMeans();
-                    }
-                    totalNormAvg[a] = algorithm.executeKMeans(metrics);
-                    F[a] = algorithm.getClusters();
-                    a++;
-                }
 
-                for (int i = 0; i < totalNormAvg.length; i++) {
-                    if (i >= execPerThread && finalC >= execSurplus)
-                        break;
-                    double avg = 0;
-                    for (int j = 0; j < totalNormAvg[i].length; j++) {
-                        avg = avg + totalNormAvg[i][j];
-                    }
-                    if (avg < globalAvg) {
-                        globalAvg = avg;
-                        globalAvgIndex = i;
-                    }
+            KmeansPar algorithm = new KmeansPar(data, clustersNumber, n);
+            if (initRandomClusters) {
+                algorithm.initClusters();
+            } else {
+                algorithm.initMeans();
+            }
+            double[] totalNormAvg = null;
+            totalNormAvg = algorithm.executeKMeans((task, id) -> {
+                chunks[id % Common.THREAD_COUNT].add(task);
+            }, () -> {
+                try {
+                    barrierStart.await();
+                } catch (InterruptedException | BrokenBarrierException e) {
+                    e.printStackTrace();
                 }
-                totalNormAvgR[finalC] = totalNormAvg[globalAvgIndex];
-                G[finalC] = F[globalAvgIndex];// prende il nome del thread e ci mette il
-                // nuovo cluster
-            });
-            t.start();
-            threads[c] = t;
+            }, () -> {
+                try {
+                    barrierStop.await();
+                } catch (InterruptedException | BrokenBarrierException e) {
+                    e.printStackTrace();
+                }
+            }, metrics);
+
+            double total = 0;
+            for (double avg : totalNormAvg) {
+                total = total + avg;
+            }
+            if (minimunTotal > total) {
+                minimunTotal = total;
+                FINAL = algorithm.getClusters();
+            }
+
+            for (int i = 0; i < Common.THREAD_COUNT; i++) {
+                chunks[i].clear();
+            }
+
             c++;
         }
-        // poi qui si confrontano tutti i valori di G e si prende il migliore.
-        double globalAvg = Double.MAX_VALUE;
-        int globalAvgIndex = 0;
-        for (int i = 0; i < totalNormAvgR.length; i++) {
-            double avg = 0;
-            threads[i].join(); // aspetta che abbia finito
-            for (int j = 0; j < totalNormAvgR[i].length; j++) {
-                avg = avg + totalNormAvgR[i][j];
-            }
-            if (avg < globalAvg) {
-                globalAvg = avg;
-                globalAvgIndex = i;
-            }
-        }
-//        System.out.println(Common.formatTable(G[globalAvgIndex]));
-        Common.printList(G[globalAvgIndex]);
+        Common.printList(FINAL);
         long endTime = System.nanoTime();
         metrics[0] = endTime - startTime;
         Common.printMetrics(metrics, clustersNumber);
+        for (var t : threads) {
+            t.interrupt();
+        }
     }
 
 }
